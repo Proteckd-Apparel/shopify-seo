@@ -158,6 +158,20 @@ model SkipPage {
   createdAt  DateTime @default(now())
 }
 
+model NotFound {
+  id        String   @id @default(cuid())
+  url       String   @unique
+  referrer  String?
+  userAgent String?
+  count     Int      @default(1)
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @default(now())
+  resolved  Boolean  @default(false)
+
+  @@index([lastSeen])
+  @@index([resolved])
+}
+
 model JobRun {
   id         String   @id @default(cuid())
   kind       String   // scan | optimize_all | compress_photos | etc.
