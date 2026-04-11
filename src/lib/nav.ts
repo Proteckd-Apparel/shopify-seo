@@ -308,9 +308,9 @@ export const NAV: NavSection[] = [
       },
       {
         slug: "assets-folder",
-        title: "Assets Folder",
-        description: "Browse files in your theme assets.",
-        icon: Files,
+        title: "Compress Asset Images",
+        description: "Re-compress images in your theme's assets folder.",
+        icon: FileImage,
       },
       {
         slug: "backlinks",
