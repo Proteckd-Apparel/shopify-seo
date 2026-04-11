@@ -7,9 +7,11 @@ import {
   saveOptimizerConfig,
 } from "@/lib/optimizer-config";
 import {
+  generateArticleSchema,
   generateProductSchema,
   generateCollectionSchema,
   generateLocalBusinessSchema,
+  buildBreadcrumbForResource,
   siteWideSchemas,
 } from "@/lib/json-ld-generators";
 import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
@@ -147,7 +149,13 @@ export async function applyProductSchemaToOne(
         };
       }
     } catch {}
-    const schema = generateProductSchema(r, cfg.jsonLd.products, shop, reviews);
+    const schema = generateProductSchema(
+      r,
+      cfg.jsonLd.products,
+      shop,
+      reviews,
+      cfg.jsonLd.other.breadcrumb,
+    );
     await setJsonLd(r.id, schema);
     return {
       ok: true,
@@ -202,6 +210,7 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
           cfg.jsonLd.products,
           shop,
           reviews,
+          cfg.jsonLd.other.breadcrumb,
         );
         await setJsonLd(p.id, schema);
         saved++;
@@ -237,8 +246,13 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
     let failed = 0;
     for (const c of collections) {
       try {
-        const schema = generateCollectionSchema(c, cfg.jsonLd.collections, shop);
-        await setJsonLd(c.id, schema);
+        const schema = generateCollectionSchema(
+          c,
+          cfg.jsonLd.collections,
+          shop,
+          cfg.jsonLd.other.breadcrumb,
+        );
+        await setJsonLd(c.id, schema as Record<string, unknown>);
         saved++;
       } catch {
         failed++;
@@ -249,6 +263,44 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
       ok: failed === 0,
       message: `Saved ${saved}, failed ${failed}`,
       processed: collections.length,
+      saved,
+      failed,
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+// ---------- Apply: Articles ----------
+
+export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
+  try {
+    const cfg = await loadOptimizerConfig();
+    const shop = await getShop();
+    const articles = await prisma.resource.findMany({
+      where: { type: "article" },
+      include: { images: true },
+      take: 5000,
+    });
+    let saved = 0;
+    let failed = 0;
+    for (const a of articles) {
+      try {
+        const article = generateArticleSchema(a, shop);
+        const out = cfg.jsonLd.other.breadcrumb
+          ? [article, buildBreadcrumbForResource(a, shop)]
+          : article;
+        await setJsonLd(a.id, out as Record<string, unknown>);
+        saved++;
+      } catch {
+        failed++;
+      }
+    }
+    revalidatePath("/optimize/json-ld");
+    return {
+      ok: failed === 0,
+      message: `Saved ${saved}, failed ${failed}`,
+      processed: articles.length,
       saved,
       failed,
     };

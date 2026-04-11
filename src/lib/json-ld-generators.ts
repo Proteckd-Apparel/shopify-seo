@@ -91,18 +91,25 @@ export type RealReviews = {
 
 // Returned shape is an array of objects (ProductGroup + return policy +
 // shipping rate settings + shipping details), matching SEO King's pattern.
+// Optionally appends a BreadcrumbList when withBreadcrumb is true.
 export function generateProductSchema(
   resource: ResourceWithImages,
   cfg: ProductsJsonLdConfig,
   shop: { domain: string; name: string },
   reviews?: RealReviews | null,
+  withBreadcrumb = false,
 ): Record<string, unknown> {
-  return generateProductSchemaInternal(
+  const arr = generateProductSchemaInternal(
     resource,
     cfg,
     shop,
     reviews,
-  ) as unknown as Record<string, unknown>;
+  ) as unknown[];
+  const out = Array.isArray(arr) ? [...arr] : [arr];
+  if (withBreadcrumb) {
+    out.push(buildBreadcrumbForResource(resource, shop));
+  }
+  return out as unknown as Record<string, unknown>;
 }
 
 function generateProductSchemaInternal(
@@ -385,7 +392,8 @@ export function generateCollectionSchema(
   resource: ResourceWithImages,
   cfg: CollectionsJsonLdConfig,
   shop: { domain: string; name: string },
-): Record<string, unknown> {
+  withBreadcrumb = false,
+): Record<string, unknown> | unknown[] {
   const url = `https://${shop.domain}/collections/${resource.handle}`;
   const schema: Record<string, unknown> = {
     "@context": "https://schema.org/",
@@ -404,7 +412,11 @@ export function generateCollectionSchema(
       worstRating: 1,
     };
   }
-  return prune(schema);
+  const pruned = prune(schema);
+  if (withBreadcrumb) {
+    return [pruned, buildBreadcrumbForResource(resource, shop)];
+  }
+  return pruned;
 }
 
 // ---------- LocalBusiness ----------
@@ -484,19 +496,89 @@ export function generateBreadcrumbSchema(
   };
 }
 
+// Convenience: build a Breadcrumb for any scanned resource. The chain is
+// Home → (Type Index) → Resource. If the resource is a product we also add
+// a "Collections" link as the parent so Google has a consistent path.
+export function buildBreadcrumbForResource(
+  resource: ResourceWithImages,
+  shop: { domain: string; name: string },
+) {
+  const home = `https://${shop.domain}`;
+  const items: Array<{ name: string; url: string }> = [
+    { name: shop.name, url: home },
+  ];
+  if (resource.type === "product") {
+    items.push({ name: "Products", url: `${home}/products` });
+    items.push({
+      name: resource.title ?? resource.handle ?? "",
+      url: `${home}/products/${resource.handle}`,
+    });
+  } else if (resource.type === "collection") {
+    items.push({ name: "Collections", url: `${home}/collections` });
+    items.push({
+      name: resource.title ?? resource.handle ?? "",
+      url: `${home}/collections/${resource.handle}`,
+    });
+  } else if (resource.type === "article") {
+    let blogHandle = "news";
+    try {
+      const raw = resource.raw ? JSON.parse(resource.raw) : null;
+      if (raw?.blog?.handle) blogHandle = raw.blog.handle;
+    } catch {}
+    items.push({
+      name: "Blog",
+      url: `${home}/blogs/${blogHandle}`,
+    });
+    items.push({
+      name: resource.title ?? resource.handle ?? "",
+      url: `${home}/blogs/${blogHandle}/${resource.handle}`,
+    });
+  } else if (resource.type === "page") {
+    items.push({
+      name: resource.title ?? resource.handle ?? "",
+      url: `${home}/pages/${resource.handle}`,
+    });
+  }
+  return generateBreadcrumbSchema(items);
+}
+
 export function generateArticleSchema(
   resource: ResourceWithImages,
   shop: { domain: string; name: string },
 ) {
+  // Try to derive a blog handle from raw json (set by the scanner)
+  let blogHandle: string | undefined;
+  try {
+    const raw = resource.raw ? JSON.parse(resource.raw) : null;
+    blogHandle = raw?.blog?.handle;
+  } catch {}
+  const url = blogHandle
+    ? `https://${shop.domain}/blogs/${blogHandle}/${resource.handle}`
+    : `https://${shop.domain}/blogs/news/${resource.handle}`;
+  const text = (resource.bodyHtml ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return prune({
     "@context": "https://schema.org/",
     "@type": "Article",
     headline: resource.title,
-    description: resource.seoDescription ?? undefined,
+    description: resource.seoDescription ?? text.slice(0, 200),
+    articleBody: text.slice(0, 5000),
     image: resource.images.map((i) => i.src.split("?")[0]),
     author: { "@type": "Organization", name: shop.name },
-    publisher: { "@type": "Organization", name: shop.name },
+    publisher: {
+      "@type": "Organization",
+      name: shop.name,
+      logo: {
+        "@type": "ImageObject",
+        url: `https://${shop.domain}/cdn/shop/files/logo.png`,
+      },
+    },
     datePublished: resource.fetchedAt.toISOString(),
+    dateModified: resource.updatedAt.toISOString(),
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    url,
   });
 }
 

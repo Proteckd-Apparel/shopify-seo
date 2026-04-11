@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { applySiteWideSchemas, saveJsonLdConfig } from "./actions";
+import {
+  applyArticleSchemaToAll,
+  applySiteWideSchemas,
+  saveJsonLdConfig,
+} from "./actions";
 import type { OtherJsonLdConfig } from "@/lib/json-ld-config";
 
 const TYPES: Array<{ key: keyof OtherJsonLdConfig; label: string; hint: string }> = [
@@ -40,6 +44,20 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
         return;
       }
       const r = await applySiteWideSchemas();
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+    });
+  }
+
+  function applyArticles() {
+    if (
+      !confirm(
+        "Apply Article + Breadcrumb schema to ALL blog articles? Writes a metafield on every article.",
+      )
+    )
+      return;
+    setMsg(null);
+    start(async () => {
+      const r = await applyArticleSchemaToAll();
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
     });
   }
@@ -127,7 +145,15 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
           disabled={pending}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
         >
-          {pending ? "Working…" : "Save & Apply to store"}
+          {pending ? "Working…" : "Save & Apply site-wide"}
+        </button>
+        <button
+          type="button"
+          onClick={applyArticles}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-indigo-300 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-60"
+        >
+          Update all articles
         </button>
         {msg && (
           <span
