@@ -269,6 +269,121 @@ export async function updateResourceTitle(
   });
 }
 
+// ---------- Handle (URL) updates ----------
+//
+// Changing the handle on a product/collection/article/page via the proper
+// mutation causes Shopify to AUTOMATICALLY create a 301 redirect from the
+// old URL to the new one. We're not doing anything special — that's just
+// Shopify's behavior. Verify in admin → Online Store → Navigation → URL
+// Redirects after a run.
+
+const PRODUCT_HANDLE_UPDATE = /* GraphQL */ `
+  mutation ProductHandleUpdate($input: ProductInput!) {
+    productUpdate(input: $input) {
+      product { id handle }
+      userErrors { field message }
+    }
+  }
+`;
+
+const COLLECTION_HANDLE_UPDATE = /* GraphQL */ `
+  mutation CollectionHandleUpdate($input: CollectionInput!) {
+    collectionUpdate(input: $input) {
+      collection { id handle }
+      userErrors { field message }
+    }
+  }
+`;
+
+const PAGE_HANDLE_UPDATE = /* GraphQL */ `
+  mutation PageHandleUpdate($id: ID!, $page: PageUpdateInput!) {
+    pageUpdate(id: $id, page: $page) {
+      page { id handle }
+      userErrors { field message }
+    }
+  }
+`;
+
+const ARTICLE_HANDLE_UPDATE = /* GraphQL */ `
+  mutation ArticleHandleUpdate($id: ID!, $article: ArticleUpdateInput!) {
+    articleUpdate(id: $id, article: $article) {
+      article { id handle }
+      userErrors { field message }
+    }
+  }
+`;
+
+export async function updateResourceHandle(
+  resourceId: string,
+  type: string,
+  newHandle: string,
+  source: "manual" | "ai" | "rule" = "manual",
+  model?: string,
+) {
+  const existing = await prisma.resource.findUnique({
+    where: { id: resourceId },
+  });
+  if (!existing) throw new Error(`Resource not found: ${resourceId}`);
+
+  if (type === "product") {
+    const data = await shopifyGraphQL<{
+      productUpdate: MutationResult<{
+        product: { id: string; handle: string };
+      }>;
+    }>(PRODUCT_HANDLE_UPDATE, {
+      input: { id: resourceId, handle: newHandle },
+    });
+    throwOnUserErrors(data.productUpdate.userErrors);
+  } else if (type === "collection") {
+    const data = await shopifyGraphQL<{
+      collectionUpdate: MutationResult<{
+        collection: { id: string; handle: string };
+      }>;
+    }>(COLLECTION_HANDLE_UPDATE, {
+      input: { id: resourceId, handle: newHandle },
+    });
+    throwOnUserErrors(data.collectionUpdate.userErrors);
+  } else if (type === "page") {
+    const data = await shopifyGraphQL<{
+      pageUpdate: MutationResult<{ page: { id: string; handle: string } }>;
+    }>(PAGE_HANDLE_UPDATE, {
+      id: resourceId,
+      page: { handle: newHandle },
+    });
+    throwOnUserErrors(data.pageUpdate.userErrors);
+  } else if (type === "article") {
+    const data = await shopifyGraphQL<{
+      articleUpdate: MutationResult<{
+        article: { id: string; handle: string };
+      }>;
+    }>(ARTICLE_HANDLE_UPDATE, {
+      id: resourceId,
+      article: { handle: newHandle },
+    });
+    throwOnUserErrors(data.articleUpdate.userErrors);
+  } else {
+    throw new Error(`Unsupported resource type: ${type}`);
+  }
+
+  if (newHandle !== existing.handle) {
+    await prisma.optimization.create({
+      data: {
+        resourceId,
+        field: "handle",
+        oldValue: existing.handle,
+        newValue: newHandle,
+        source,
+        model,
+      },
+    });
+  }
+
+  await prisma.resource.update({
+    where: { id: resourceId },
+    data: { handle: newHandle },
+  });
+}
+
 // ---------- Body HTML updates ----------
 
 const PRODUCT_BODY_UPDATE = /* GraphQL */ `

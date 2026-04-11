@@ -49,7 +49,26 @@ export type TemplatePurpose =
   | "metaTitle"
   | "metaDescription"
   | "photoFilename"
-  | "title";
+  | "title"
+  | "url";
+
+export type UrlOptimizerConfig = {
+  enabled: boolean;
+  scope: "all" | "published" | "drafts";
+  maxChars: number;
+  removeDuplicateWords: boolean;
+  removeSmallWords: boolean;
+  overwriteExisting: boolean;
+};
+
+export const DEFAULT_URL_CONFIG: UrlOptimizerConfig = {
+  enabled: false, // OFF by default — high stakes
+  scope: "published",
+  maxChars: 70,
+  removeDuplicateWords: true,
+  removeSmallWords: false,
+  overwriteExisting: false,
+};
 
 export type TitleOptimizerConfig = {
   enabled: boolean;
@@ -139,6 +158,13 @@ export type OptimizerConfig = {
     articles: TitleOptimizerConfig;
     pages: TitleOptimizerConfig;
   };
+  // URL handles (auto-redirect created by Shopify on save)
+  urls: {
+    products: UrlOptimizerConfig;
+    collections: UrlOptimizerConfig;
+    articles: UrlOptimizerConfig;
+    pages: UrlOptimizerConfig;
+  };
 };
 
 const DEFAULT_RESOURCE_CONFIG: ResourceConfig = {
@@ -220,6 +246,12 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
     articles: { ...DEFAULT_TITLE_CONFIG, scope: "all" },
     pages: { ...DEFAULT_TITLE_CONFIG },
   },
+  urls: {
+    products: { ...DEFAULT_URL_CONFIG },
+    collections: { ...DEFAULT_URL_CONFIG },
+    articles: { ...DEFAULT_URL_CONFIG, scope: "all" },
+    pages: { ...DEFAULT_URL_CONFIG },
+  },
 };
 
 export function getTemplate(
@@ -262,6 +294,10 @@ export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
         titles: {
           ...DEFAULT_OPTIMIZER_CONFIG.titles,
           ...(parsed.titles ?? {}),
+        },
+        urls: {
+          ...DEFAULT_OPTIMIZER_CONFIG.urls,
+          ...(parsed.urls ?? {}),
         },
         jsonLd: {
           ...DEFAULT_OPTIMIZER_CONFIG.jsonLd,
