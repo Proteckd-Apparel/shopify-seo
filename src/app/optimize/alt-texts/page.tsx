@@ -9,20 +9,69 @@ import {
   saveAltText,
 } from "../_actions";
 import { BulkButton } from "@/components/bulk-button";
+import {
+  getTemplate,
+  loadOptimizerConfig,
+  type TemplateScopeKey,
+} from "@/lib/optimizer-config";
+import { AltTextsTemplateMode } from "./template-mode";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 600;
 
 const PAGE_SIZE = 50;
 
 export default async function AltTextsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filter?: string; page?: string }>;
+  searchParams: Promise<{ mode?: string; filter?: string; page?: string }>;
 }) {
   const sp = await searchParams;
+  const mode = sp.mode ?? "template";
   const filter = sp.filter ?? "missing";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10));
 
+  const cfg = await loadOptimizerConfig();
+  const initialTemplates: Record<TemplateScopeKey, ReturnType<typeof getTemplate>> = {
+    products: getTemplate(cfg, "altText", "products"),
+    collections: getTemplate(cfg, "altText", "collections"),
+    articles: getTemplate(cfg, "altText", "articles"),
+    pages: getTemplate(cfg, "altText", "pages"),
+  };
+
+  return (
+    <div>
+      <PageHeader
+        icon={ImageIcon}
+        title="Alt Texts"
+        description="Generate alt text by template (bulk) or edit row-by-row."
+      />
+
+      <div className="flex gap-1 mb-4">
+        <ModeTab href="?mode=template" current={mode} value="template">
+          Template
+        </ModeTab>
+        <ModeTab href="?mode=inline" current={mode} value="inline">
+          Inline edit
+        </ModeTab>
+      </div>
+
+      {mode === "template" ? (
+        <AltTextsTemplateMode initialTemplates={initialTemplates} />
+      ) : (
+        <InlineEditMode filter={filter} page={page} />
+      )}
+    </div>
+  );
+}
+
+async function InlineEditMode({
+  filter,
+  page,
+}: {
+  filter: string;
+  page: number;
+}) {
   const where =
     filter === "missing"
       ? { OR: [{ altText: null }, { altText: "" }] }
@@ -44,28 +93,22 @@ export default async function AltTextsPage({
   const total = await prisma.image.count();
 
   return (
-    <div>
-      <PageHeader
-        icon={ImageIcon}
-        title="Alt Texts"
-        description="Edit alt text for every image. Saves write directly to Shopify."
-      />
-
+    <>
       <div className="mb-4">
         <BulkButton
-          label="Generate missing alt texts"
+          label="Generate missing alt texts (AI)"
           action={bulkGenerateAltText.bind(null, true)}
         />
       </div>
 
       <div className="flex gap-2 mb-4 items-center">
-        <Pill href="?filter=missing" current={filter} value="missing">
+        <Pill href="?mode=inline&filter=missing" current={filter} value="missing">
           Missing ({totalMissing})
         </Pill>
-        <Pill href="?filter=set" current={filter} value="set">
+        <Pill href="?mode=inline&filter=set" current={filter} value="set">
           Set ({total - totalMissing})
         </Pill>
-        <Pill href="?filter=all" current={filter} value="all">
+        <Pill href="?mode=inline&filter=all" current={filter} value="all">
           All ({total})
         </Pill>
       </div>
@@ -137,7 +180,7 @@ export default async function AltTextsPage({
         <div className="flex gap-2">
           {page > 1 && (
             <Link
-              href={`?filter=${filter}&page=${page - 1}`}
+              href={`?mode=inline&filter=${filter}&page=${page - 1}`}
               className="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50"
             >
               Prev
@@ -145,7 +188,7 @@ export default async function AltTextsPage({
           )}
           {images.length === PAGE_SIZE && (
             <Link
-              href={`?filter=${filter}&page=${page + 1}`}
+              href={`?mode=inline&filter=${filter}&page=${page + 1}`}
               className="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50"
             >
               Next
@@ -153,7 +196,32 @@ export default async function AltTextsPage({
           )}
         </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+function ModeTab({
+  href,
+  current,
+  value,
+  children,
+}: {
+  href: string;
+  current: string;
+  value: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`px-4 py-2 text-sm font-medium rounded ${
+        current === value
+          ? "bg-indigo-600 text-white"
+          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
 

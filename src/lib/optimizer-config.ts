@@ -2,6 +2,10 @@
 // (we reuse that field; the AI free-text rules live under `notes`).
 
 import { prisma } from "./prisma";
+import {
+  DEFAULT_TEMPLATE,
+  type TemplateConfig,
+} from "./template-engine";
 
 export type ResourceConfig = {
   enabled: boolean;
@@ -25,6 +29,14 @@ export type ResourceConfig = {
   translations: boolean;
 };
 
+export type TemplatePurpose = "altText" | "metaTitle" | "metaDescription";
+export type TemplateScopeKey = "products" | "collections" | "articles" | "pages";
+
+// One TemplateConfig per (purpose, scope) — e.g. templates.altText.products.
+export type TemplateMap = Partial<
+  Record<TemplatePurpose, Partial<Record<TemplateScopeKey, TemplateConfig>>>
+>;
+
 export type OptimizerConfig = {
   // Global
   masterAutoOptimize: boolean;
@@ -44,6 +56,8 @@ export type OptimizerConfig = {
   doNotReoptimizePhotos: boolean;
   doNotReoptimizeFilenames: boolean;
   upscalePhotos: boolean;
+  // Templates
+  templates: TemplateMap;
 };
 
 const DEFAULT_RESOURCE_CONFIG: ResourceConfig = {
@@ -82,7 +96,27 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
   doNotReoptimizePhotos: false,
   doNotReoptimizeFilenames: false,
   upscalePhotos: false,
+  templates: {},
 };
+
+export function getTemplate(
+  cfg: OptimizerConfig,
+  purpose: TemplatePurpose,
+  scope: TemplateScopeKey,
+): TemplateConfig {
+  return cfg.templates?.[purpose]?.[scope] ?? { ...DEFAULT_TEMPLATE };
+}
+
+export function setTemplate(
+  cfg: OptimizerConfig,
+  purpose: TemplatePurpose,
+  scope: TemplateScopeKey,
+  template: TemplateConfig,
+): OptimizerConfig {
+  const next: OptimizerConfig = { ...cfg, templates: { ...cfg.templates } };
+  next.templates[purpose] = { ...next.templates[purpose], [scope]: template };
+  return next;
+}
 
 export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
   const s = await prisma.settings.findUnique({ where: { id: 1 } });

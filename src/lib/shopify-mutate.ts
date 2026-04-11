@@ -161,7 +161,7 @@ export async function updateResourceSeo(
 export async function updateImageAlt(
   imageId: string,
   alt: string,
-  source: "manual" | "ai" = "manual",
+  source: "manual" | "ai" | "rule" = "manual",
   model?: string,
 ) {
   const img = await prisma.image.findUnique({ where: { id: imageId } });
