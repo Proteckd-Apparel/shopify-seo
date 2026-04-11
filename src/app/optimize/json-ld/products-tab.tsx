@@ -335,7 +335,7 @@ export function ProductsTab({
                 className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded"
               />
             </Field>
-            <Field label="Shipping Region">
+            <Field label="Primary Shipping Country (ISO)">
               <input
                 value={cfg.shippingRegion}
                 onChange={(e) => patch({ shippingRegion: e.target.value })}
@@ -343,7 +343,24 @@ export function ProductsTab({
                 className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded"
               />
             </Field>
+            <Field label="Currency (ISO 4217)">
+              <input
+                value={cfg.currency}
+                onChange={(e) => patch({ currency: e.target.value })}
+                placeholder="USD"
+                className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded"
+              />
+            </Field>
           </div>
+          <Field label="All shipping countries (comma-separated ISO codes)">
+            <textarea
+              rows={2}
+              value={cfg.shippingCountries}
+              onChange={(e) => patch({ shippingCountries: e.target.value })}
+              placeholder="US,GB,DE,FR,..."
+              className="w-full px-3 py-1.5 text-xs font-mono border border-slate-200 rounded"
+            />
+          </Field>
 
           <hr className="border-slate-100" />
 

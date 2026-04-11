@@ -31,7 +31,9 @@ export type ProductsJsonLdConfig = {
   freeShipping: boolean;
   freeShippingWorldwide: boolean;
   freeShippingThreshold: number | null;
-  shippingRegion: string; // ISO country code or "WORLDWIDE"
+  shippingRegion: string; // primary ISO country code
+  shippingCountries: string; // comma-separated extra ISO codes (eg "US,GB,DE,FR")
+  currency: string; // ISO 4217 currency code (eg "USD")
   returnPolicyUrl: string;
   allowReturns: "no_returns" | "x_days" | "always";
   returnDaysLimit: number;
@@ -96,6 +98,9 @@ export const DEFAULT_JSON_LD_CONFIG: JsonLdConfig = {
     freeShippingWorldwide: false,
     freeShippingThreshold: null,
     shippingRegion: "US",
+    shippingCountries:
+      "US,GB,JP,DE,FR,CA,BR,AU,ES,IT,NL,SE,NO,HR,EE,AT,SA,AE,ZA,CZ,IL,AR,CL,CO,GR,RO,PE",
+    currency: "USD",
     returnPolicyUrl: "",
     allowReturns: "x_days",
     returnDaysLimit: 30,

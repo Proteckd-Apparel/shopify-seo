@@ -11,136 +11,318 @@ import type {
 
 type ResourceWithImages = Resource & { images: Image[] };
 
-// ---------- Product ----------
+// Variant shape we expect to find inside Resource.raw (mirrors ShopifyVariant).
+type RawVariant = {
+  id: string;
+  title: string;
+  sku: string | null;
+  barcode: string | null;
+  price: string;
+  compareAtPrice: string | null;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  selectedOptions: Array<{ name: string; value: string }>;
+  image: { id: string; url: string; width: number | null; height: number | null; altText: string | null } | null;
+};
 
+type RawProduct = {
+  variants?: RawVariant[];
+  options?: Array<{ name: string; values: string[] }>;
+  priceRangeV2?: {
+    minVariantPrice?: { amount: string; currencyCode: string };
+    maxVariantPrice?: { amount: string; currencyCode: string };
+  };
+};
+
+function parseRaw(resource: ResourceWithImages): RawProduct {
+  if (!resource.raw) return {};
+  try {
+    return JSON.parse(resource.raw) as RawProduct;
+  } catch {
+    return {};
+  }
+}
+
+function findOption(
+  v: RawVariant,
+  names: string[],
+): string | undefined {
+  for (const opt of v.selectedOptions) {
+    if (names.some((n) => opt.name.toLowerCase() === n.toLowerCase())) {
+      return opt.value;
+    }
+  }
+  return undefined;
+}
+
+function variesByForOptions(options: RawProduct["options"]): string[] {
+  const map: Record<string, string> = {
+    size: "https://schema.org/size",
+    color: "https://schema.org/color",
+    colour: "https://schema.org/color",
+    material: "https://schema.org/material",
+    pattern: "https://schema.org/pattern",
+  };
+  const out: string[] = [];
+  for (const o of options ?? []) {
+    const k = o.name.toLowerCase();
+    if (map[k]) out.push(map[k]);
+  }
+  return out;
+}
+
+// ---------- Product (now an array of ProductGroup + supporting nodes) ----------
+
+const RETURN_POLICY_ID = "#return_policy_psk";
+const SHIPPING_RATE_ID = "#shipping_rate_settings_psk";
+const SHIPPING_DETAILS_ID = "#shipping_details_1_psk";
+
+// Returned shape is an array of objects (ProductGroup + return policy +
+// shipping rate settings + shipping details), matching SEO King's pattern.
 export function generateProductSchema(
   resource: ResourceWithImages,
   cfg: ProductsJsonLdConfig,
   shop: { domain: string; name: string },
 ): Record<string, unknown> {
-  const url = resource.url ?? `https://${shop.domain}/products/${resource.handle}`;
-  const description = pickDescription(resource, cfg.descriptionType);
+  return generateProductSchemaInternal(resource, cfg, shop) as unknown as Record<string, unknown>;
+}
 
-  const schema: Record<string, unknown> = {
-    "@context": "https://schema.org/",
-    "@type": "Product",
-    name: resource.title,
-    description,
-    url,
-    sku: resource.id.replace("gid://shopify/Product/", ""),
-    brand: {
-      "@type": "Brand",
-      name:
-        cfg.brandSource === "vendor"
-          ? (resource.vendor ?? shop.name)
-          : shop.name,
-    },
-    image: resource.images.map((i) => i.src.split("?")[0]),
+function generateProductSchemaInternal(
+  resource: ResourceWithImages,
+  cfg: ProductsJsonLdConfig,
+  shop: { domain: string; name: string },
+): unknown {
+  const raw = parseRaw(resource);
+  const variants = raw.variants ?? [];
+  const url =
+    resource.url ??
+    `https://${shop.domain}/products/${resource.handle}`;
+  const description = pickDescription(resource, cfg.descriptionType);
+  const productGroupId = resource.id.replace("gid://shopify/Product/", "");
+  const currency = cfg.currency || "USD";
+
+  const conditionMap: Record<string, string> = {
+    new: "https://schema.org/NewCondition",
+    refurbished: "https://schema.org/RefurbishedCondition",
+    used: "https://schema.org/UsedCondition",
+    damaged: "https://schema.org/DamagedCondition",
+  };
+  const itemCondition = conditionMap[cfg.itemCondition] ?? conditionMap.new;
+
+  const seller = {
+    "@type": "Organization",
+    url: `https://${shop.domain}`,
+    name: shop.name,
   };
 
-  if (cfg.itemCondition) {
-    const conditionMap: Record<string, string> = {
-      new: "https://schema.org/NewCondition",
-      refurbished: "https://schema.org/RefurbishedCondition",
-      used: "https://schema.org/UsedCondition",
-      damaged: "https://schema.org/DamagedCondition",
+  const brandName =
+    cfg.brandSource === "vendor"
+      ? (resource.vendor ?? shop.name)
+      : shop.name;
+  const brand = { "@type": "Brand", name: brandName };
+
+  // ----- AggregateRating + reviews
+  const aggregateRating = cfg.showStarRating
+    ? buildAggregateRating(productGroupId, cfg)
+    : undefined;
+
+  // ----- hasVariant array
+  const hasVariant = variants.map((v) => {
+    const size = findOption(v, ["Size"]);
+    const color = findOption(v, ["Color", "Colour"]);
+    const material = findOption(v, ["Material"]);
+    // Variant image (raw JSON shape uses `url`); fall back to first product
+    // image (Prisma shape uses `src`). Normalize both to a `url` field.
+    const variantImage = v.image
+      ? {
+          url: v.image.url,
+          width: v.image.width,
+          height: v.image.height,
+        }
+      : resource.images[0]
+        ? {
+            url: resource.images[0].src,
+            width: resource.images[0].width,
+            height: resource.images[0].height,
+          }
+        : null;
+
+    const compareAt = v.compareAtPrice ? Number(v.compareAtPrice) : null;
+    const price = Number(v.price);
+
+    const offer: Record<string, unknown> = {
+      "@type": "Offer",
+      url: `${url}?variant=${v.id.replace("gid://shopify/ProductVariant/", "")}`,
+      priceCurrency: currency,
+      price,
+      priceValidUntil: priceValidUntil(),
+      itemCondition,
+      seller,
+      availability: cfg.alwaysShowInStock || v.availableForSale
+        ? "https://schema.org/InStock"
+        : "https://schema.org/OutOfStock",
+      areaServed: countryName(cfg.shippingRegion),
+      shippingDetails: { "@id": SHIPPING_DETAILS_ID },
+      hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
     };
-    schema.itemCondition = conditionMap[cfg.itemCondition];
+
+    if (compareAt && compareAt > price) {
+      offer.priceSpecification = {
+        "@type": "UnitPriceSpecification",
+        price: compareAt,
+        priceCurrency: currency,
+        priceType: "https://schema.org/ListPrice",
+      };
+    }
+
+    const variantObj: Record<string, unknown> = {
+      "@type": "Product",
+      inProductGroupWithID: productGroupId,
+      name: resource.title ?? "",
+      description: v.title || `${size ?? ""} / ${color ?? ""}`.trim(),
+      sku: v.sku ?? v.id,
+      mpn: v.sku ?? v.id,
+      size,
+      color,
+      material,
+      image: variantImage
+        ? [
+            {
+              "@type": "ImageObject",
+              contentUrl: variantImage.url.split("?")[0],
+              author: { "@type": "Organization", name: shop.name },
+              width:
+                variantImage.width != null
+                  ? {
+                      "@type": "QuantitativeValue",
+                      value: variantImage.width,
+                      unitCode: "PIX",
+                    }
+                  : undefined,
+              height:
+                variantImage.height != null
+                  ? {
+                      "@type": "QuantitativeValue",
+                      value: variantImage.height,
+                      unitCode: "PIX",
+                    }
+                  : undefined,
+            },
+          ]
+        : undefined,
+      offers: offer,
+    };
+
+    return prune(variantObj);
+  });
+
+  // ----- ProductGroup root
+  const productGroup: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@type": "ProductGroup",
+    productGroupID: productGroupId,
+    mainEntityOfPage: url,
+    name: resource.title ?? "",
+    description,
+    brand,
+    audience: cfg.gender || cfg.ageGroup
+      ? {
+          "@type": "PeopleAudience",
+          suggestedGender: cfg.gender || undefined,
+          suggestedMinAge: cfg.ageGroup || undefined,
+        }
+      : { "@type": "PeopleAudience" },
+    aggregateRating,
+    variesBy: variesByForOptions(raw.options),
+    hasVariant: hasVariant.length > 0 ? hasVariant : undefined,
+  };
+
+  // ----- MerchantReturnPolicy as a separate referenced node
+  const countries = parseCountries(cfg.shippingCountries, cfg.shippingRegion);
+  const returnPolicy = {
+    "@context": "https://schema.org/",
+    "@type": "MerchantReturnPolicy",
+    "@id": RETURN_POLICY_ID,
+    merchantReturnLink: cfg.returnPolicyUrl || undefined,
+    url: cfg.returnPolicyUrl || undefined,
+    returnPolicyCategory:
+      cfg.allowReturns === "always"
+        ? "https://schema.org/MerchantReturnUnlimitedWindow"
+        : cfg.allowReturns === "no_returns"
+          ? "https://schema.org/MerchantReturnNotPermitted"
+          : "https://schema.org/MerchantReturnFiniteReturnWindow",
+    applicableCountry: countries,
+    merchantReturnDays:
+      cfg.allowReturns === "x_days" ? cfg.returnDaysLimit : undefined,
+    returnMethod:
+      cfg.returnMethod === "in_store"
+        ? "https://schema.org/ReturnInStore"
+        : "https://schema.org/ReturnByMail",
+    returnFees:
+      cfg.returnFees === "free_shipping"
+        ? "https://schema.org/FreeReturn"
+        : cfg.returnFees === "restocking_fee"
+          ? "https://schema.org/RestockingFees"
+          : "https://schema.org/ReturnFeesCustomerResponsibility",
+    refundType: "https://schema.org/FullRefund",
+  };
+
+  // ----- ShippingRateSettings
+  const shippingRateSettings: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@type": "ShippingRateSettings",
+    "@id": SHIPPING_RATE_ID,
+  };
+  if (cfg.freeShippingThreshold) {
+    shippingRateSettings.freeShippingThreshold = {
+      "@type": "MonetaryAmount",
+      value: String(cfg.freeShippingThreshold),
+      currency,
+    };
   }
 
-  if (cfg.gender) schema.gender = cfg.gender;
-  if (cfg.ageGroup) schema.audience = { "@type": "PeopleAudience", suggestedGender: cfg.gender || undefined, suggestedMinAge: cfg.ageGroup };
-
-  // Offers
-  schema.offers = {
-    "@type": "Offer",
-    url,
-    availability: cfg.alwaysShowInStock
-      ? "https://schema.org/InStock"
-      : "https://schema.org/InStock", // TODO: real inventory
-    priceCurrency: "USD",
-    price: "0.00",
-    itemCondition: schema.itemCondition,
-    hasMerchantReturnPolicy:
-      cfg.allowReturns !== "no_returns"
+  // ----- OfferShippingDetails
+  const shippingDetails = {
+    "@id": SHIPPING_DETAILS_ID,
+    "@context": "https://schema.org/",
+    "@type": "OfferShippingDetails",
+    shippingDestination: countries.map((c) => ({
+      "@type": "DefinedRegion",
+      addressCountry: c,
+    })),
+    shippingRate: {
+      "@type": "MonetaryAmount",
+      value: cfg.freeShipping ? "0.00" : "0.00",
+      currency,
+    },
+    deliveryTime: {
+      "@type": "ShippingDeliveryTime",
+      handlingTime: {
+        "@type": "QuantitativeValue",
+        minValue: cfg.handlingTimeMinDays,
+        maxValue: cfg.handlingTimeMaxDays,
+        unitCode: "DAY",
+      },
+      ...(cfg.shippingTimeMinDays && cfg.shippingTimeMaxDays
         ? {
-            "@type": "MerchantReturnPolicy",
-            applicableCountry: cfg.shippingRegion,
-            returnPolicyCategory:
-              cfg.allowReturns === "always"
-                ? "https://schema.org/MerchantReturnUnlimitedWindow"
-                : "https://schema.org/MerchantReturnFiniteReturnWindow",
-            merchantReturnDays:
-              cfg.allowReturns === "x_days" ? cfg.returnDaysLimit : undefined,
-            returnMethod:
-              cfg.returnMethod === "by_mail"
-                ? "https://schema.org/ReturnByMail"
-                : cfg.returnMethod === "in_store"
-                  ? "https://schema.org/ReturnInStore"
-                  : "https://schema.org/ReturnByMail",
-            returnFees:
-              cfg.returnFees === "free_shipping"
-                ? "https://schema.org/FreeReturn"
-                : "https://schema.org/RestockingFees",
-          }
-        : undefined,
-    shippingDetails: cfg.freeShipping
-      ? {
-          "@type": "OfferShippingDetails",
-          shippingRate: {
-            "@type": "MonetaryAmount",
-            value: "0.00",
-            currency: "USD",
-          },
-          shippingDestination: {
-            "@type": "DefinedRegion",
-            addressCountry: cfg.freeShippingWorldwide
-              ? "*"
-              : cfg.shippingRegion,
-          },
-          deliveryTime: {
-            "@type": "ShippingDeliveryTime",
-            handlingTime: {
+            transitTime: {
               "@type": "QuantitativeValue",
-              minValue: cfg.handlingTimeMinDays,
-              maxValue: cfg.handlingTimeMaxDays,
+              minValue: cfg.shippingTimeMinDays,
+              maxValue: cfg.shippingTimeMaxDays,
               unitCode: "DAY",
             },
-            ...(cfg.shippingTimeMinDays && cfg.shippingTimeMaxDays
-              ? {
-                  transitTime: {
-                    "@type": "QuantitativeValue",
-                    minValue: cfg.shippingTimeMinDays,
-                    maxValue: cfg.shippingTimeMaxDays,
-                    unitCode: "DAY",
-                  },
-                }
-              : {}),
-          },
-        }
-      : undefined,
+          }
+        : {}),
+    },
+    shippingSettingsLink: SHIPPING_RATE_ID,
   };
 
-  // Aggregate rating
-  if (cfg.showStarRating) {
-    const ratingValue = cfg.alwaysShow5Stars
-      ? 5
-      : cfg.showRandomRating
-        ? randomRating(resource.id)
-        : 4.7;
-    const reviewCount = cfg.showRandomRating
-      ? randomReviewCount(resource.id, cfg.numberOfRatings)
-      : 12;
-    schema.aggregateRating = {
-      "@type": "AggregateRating",
-      ratingValue,
-      reviewCount,
-      bestRating: 5,
-      worstRating: 1,
-    };
-  }
-
-  return prune(schema);
+  return [
+    prune(productGroup),
+    prune(returnPolicy),
+    prune(shippingRateSettings),
+    prune(shippingDetails),
+  ];
 }
 
 // ---------- Collection ----------
@@ -275,6 +457,27 @@ export function generateBlogSchema(shop: { domain: string; name: string }) {
 
 // ---------- Helpers ----------
 
+function buildAggregateRating(
+  seed: string,
+  cfg: ProductsJsonLdConfig,
+): Record<string, unknown> {
+  const ratingValue = cfg.alwaysShow5Stars
+    ? 5
+    : cfg.showRandomRating
+      ? randomRating(seed)
+      : 4.8;
+  const reviewCount = cfg.showRandomRating
+    ? randomReviewCount(seed, cfg.numberOfRatings)
+    : 16;
+  return {
+    "@type": "AggregateRating",
+    bestRating: 5,
+    worstRating: 1,
+    ratingValue,
+    ratingCount: reviewCount,
+  };
+}
+
 function pickDescription(
   r: Resource,
   type: ProductsJsonLdConfig["descriptionType"],
@@ -288,7 +491,7 @@ function pickDescription(
 
 function randomRating(seed: string): number {
   const n = hash(seed) % 100;
-  return 4 + n / 100;
+  return Math.round((4 + n / 100) * 100) / 100;
 }
 
 function randomReviewCount(seed: string, range: ProductsJsonLdConfig["numberOfRatings"]): number {
@@ -306,11 +509,38 @@ function hash(s: string): number {
   return Math.abs(h);
 }
 
+function parseCountries(csv: string, fallback: string): string[] {
+  const list = csv
+    .split(",")
+    .map((s) => s.trim().toUpperCase())
+    .filter(Boolean);
+  return list.length > 0 ? list : [fallback || "US"];
+}
+
+function countryName(iso: string): string {
+  const map: Record<string, string> = {
+    US: "United States",
+    GB: "United Kingdom",
+    CA: "Canada",
+    AU: "Australia",
+    DE: "Germany",
+    FR: "France",
+    JP: "Japan",
+  };
+  return map[iso?.toUpperCase()] ?? iso;
+}
+
+function priceValidUntil(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 function prune<T>(obj: T): T {
   if (Array.isArray(obj)) {
-    return obj.filter((v) => v !== undefined && v !== null && v !== "").map((v) =>
-      typeof v === "object" && v ? prune(v) : v,
-    ) as unknown as T;
+    return obj
+      .filter((v) => v !== undefined && v !== null && v !== "")
+      .map((v) => (typeof v === "object" && v ? prune(v) : v)) as unknown as T;
   }
   if (obj && typeof obj === "object") {
     const out: Record<string, unknown> = {};

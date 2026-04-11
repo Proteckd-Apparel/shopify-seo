@@ -12,6 +12,21 @@ export type ShopifyImage = {
   height: number | null;
 };
 
+export type ShopifyVariant = {
+  id: string;
+  title: string;
+  sku: string | null;
+  barcode: string | null;
+  price: string; // Money string e.g. "147.00"
+  compareAtPrice: string | null;
+  availableForSale: boolean;
+  inventoryQuantity: number | null;
+  selectedOptions: Array<{ name: string; value: string }>;
+  image: ShopifyImage | null;
+  weight: number | null;
+  weightUnit: string | null;
+};
+
 export type ShopifyProduct = {
   id: string;
   handle: string;
@@ -23,7 +38,13 @@ export type ShopifyProduct = {
   status: string;
   onlineStoreUrl: string | null;
   seo: { title: string | null; description: string | null };
+  options: Array<{ name: string; values: string[] }>;
+  priceRangeV2: {
+    minVariantPrice: { amount: string; currencyCode: string };
+    maxVariantPrice: { amount: string; currencyCode: string };
+  } | null;
   images: ShopifyImage[];
+  variants: ShopifyVariant[];
 };
 
 export type ShopifyCollection = {
@@ -74,8 +95,27 @@ const PRODUCTS_QUERY = /* GraphQL */ `
         status
         onlineStoreUrl
         seo { title description }
+        options { name values }
+        priceRangeV2 {
+          minVariantPrice { amount currencyCode }
+          maxVariantPrice { amount currencyCode }
+        }
         images(first: 50) {
           nodes { id url altText width height }
+        }
+        variants(first: 100) {
+          nodes {
+            id
+            title
+            sku
+            barcode
+            price
+            compareAtPrice
+            availableForSale
+            inventoryQuantity
+            selectedOptions { name value }
+            image { id url altText width height }
+          }
         }
       }
     }
@@ -100,6 +140,14 @@ export async function* fetchAllProducts(): AsyncGenerator<ShopifyProduct[]> {
       (p: any) => ({
         ...p,
         images: p.images.nodes,
+        variants: (p.variants?.nodes ?? []).map((v: any) => ({
+          ...v,
+          // Older API versions had weight on the variant; newer puts it under
+          // inventoryItem.measurement. We don't fetch that to keep the query
+          // shape simple — schema-side weight stays optional.
+          weight: null,
+          weightUnit: null,
+        })),
       }),
     );
     yield batch;
