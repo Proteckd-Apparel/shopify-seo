@@ -1,0 +1,148 @@
+// Shopify SEO — local dev uses SQLite. For production on Railway,
+// switch provider to "postgresql" and run `prisma migrate dev`.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Settings ----------
+
+model Settings {
+  id              Int      @id @default(1)
+  shopDomain      String?  // e.g. mystore.myshopify.com
+  shopifyToken    String?  // Admin API access token
+  anthropicKey    String?
+  optimizerRules  String?  // JSON: AI rules / brand voice / instructions
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------- Cached Shopify resources ----------
+
+model Resource {
+  id            String   @id // gid://shopify/Product/123 etc.
+  type          String   // product | collection | page | article | blog
+  handle        String?
+  title         String?
+  url           String?
+  seoTitle      String?
+  seoDescription String?
+  bodyHtml      String?
+  vendor        String?
+  productType   String?
+  tags          String?  // comma-separated
+  status        String?
+  raw           String?  // full JSON dump
+  fetchedAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  images        Image[]
+  issues        Issue[]
+  optimizations Optimization[]
+
+  @@index([type])
+}
+
+model Image {
+  id           String   @id // gid://shopify/ProductImage/...
+  resourceId   String
+  src          String
+  altText      String?
+  filename     String?
+  width        Int?
+  height       Int?
+  bytes        Int?
+  resource     Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+}
+
+// ---------- Scans ----------
+
+model ScanRun {
+  id          String   @id @default(cuid())
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+  status      String   @default("running") // running | done | failed
+  totalPages  Int      @default(0)
+  totalIssues Int      @default(0)
+  log         String?  // newline log
+  issues      Issue[]
+}
+
+model Issue {
+  id         String   @id @default(cuid())
+  scanId     String
+  resourceId String?
+  category   String   // meta_title | meta_description | alt_text | broken_link | 404 | json_ld | image_size | etc.
+  severity   String   // info | warn | error
+  message    String
+  url        String?
+  fixed      Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  scan      ScanRun   @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  resource  Resource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+
+  @@index([scanId])
+  @@index([category])
+  @@index([resourceId])
+}
+
+// ---------- Optimizations (audit log of AI changes) ----------
+
+model Optimization {
+  id          String   @id @default(cuid())
+  resourceId  String
+  field       String   // seoTitle | seoDescription | altText | bodyHtml | tags
+  oldValue    String?
+  newValue    String?
+  source      String   // ai | manual | rule
+  model       String?  // claude model used
+  createdAt   DateTime @default(now())
+
+  resource    Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+}
+
+// ---------- Tools ----------
+
+model Redirect {
+  id        String   @id @default(cuid())
+  fromPath  String   @unique
+  toPath    String
+  createdAt DateTime @default(now())
+}
+
+model BrokenLink {
+  id        String   @id @default(cuid())
+  sourceUrl String
+  targetUrl String
+  status    Int
+  foundAt   DateTime @default(now())
+
+  @@index([targetUrl])
+}
+
+model SkipPage {
+  id        String   @id @default(cuid())
+  pattern   String   @unique // glob/path that the optimizer should ignore
+  createdAt DateTime @default(now())
+}
+
+model JobRun {
+  id         String   @id @default(cuid())
+  kind       String   // scan | optimize_all | compress_photos | etc.
+  status     String   @default("queued") // queued | running | done | failed
+  startedAt  DateTime?
+  finishedAt DateTime?
+  progress   Int      @default(0)
+  total      Int      @default(0)
+  error      String?
+  createdAt  DateTime @default(now())
+}
