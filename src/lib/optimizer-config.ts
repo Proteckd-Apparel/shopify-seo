@@ -6,6 +6,10 @@ import {
   DEFAULT_TEMPLATE,
   type TemplateConfig,
 } from "./template-engine";
+import {
+  DEFAULT_JSON_LD_CONFIG,
+  type JsonLdConfig,
+} from "./json-ld-config";
 
 export type ResourceConfig = {
   enabled: boolean;
@@ -58,6 +62,8 @@ export type OptimizerConfig = {
   upscalePhotos: boolean;
   // Templates
   templates: TemplateMap;
+  // JSON-LD
+  jsonLd: JsonLdConfig;
 };
 
 const DEFAULT_RESOURCE_CONFIG: ResourceConfig = {
@@ -97,6 +103,7 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
   doNotReoptimizeFilenames: false,
   upscalePhotos: false,
   templates: {},
+  jsonLd: DEFAULT_JSON_LD_CONFIG,
 };
 
 export function getTemplate(
@@ -124,7 +131,31 @@ export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
   try {
     const parsed = JSON.parse(s.optimizerRules);
     if (typeof parsed === "object" && parsed && "products" in parsed) {
-      return { ...DEFAULT_OPTIMIZER_CONFIG, ...parsed };
+      // Deep-merge jsonLd defaults so newly added fields don't break old saves
+      return {
+        ...DEFAULT_OPTIMIZER_CONFIG,
+        ...parsed,
+        jsonLd: {
+          ...DEFAULT_OPTIMIZER_CONFIG.jsonLd,
+          ...(parsed.jsonLd ?? {}),
+          products: {
+            ...DEFAULT_OPTIMIZER_CONFIG.jsonLd.products,
+            ...(parsed.jsonLd?.products ?? {}),
+          },
+          collections: {
+            ...DEFAULT_OPTIMIZER_CONFIG.jsonLd.collections,
+            ...(parsed.jsonLd?.collections ?? {}),
+          },
+          localBusiness: {
+            ...DEFAULT_OPTIMIZER_CONFIG.jsonLd.localBusiness,
+            ...(parsed.jsonLd?.localBusiness ?? {}),
+          },
+          other: {
+            ...DEFAULT_OPTIMIZER_CONFIG.jsonLd.other,
+            ...(parsed.jsonLd?.other ?? {}),
+          },
+        },
+      };
     }
     // Legacy: free-text notes only
     return { ...DEFAULT_OPTIMIZER_CONFIG, notes: String(parsed) };
