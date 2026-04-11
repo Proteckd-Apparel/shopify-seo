@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   description: "Self-hosted SEO toolkit for Shopify.",
 };
 
+// The TopBar reads from the database, so the layout must run per-request
+// instead of being prerendered at build time (when there's no DB).
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{
