@@ -3,10 +3,12 @@
 import { useState, useTransition } from "react";
 import {
   applyProductSchemaToAll,
+  applyProductSchemaToOne,
   saveJsonLdConfig,
   scanThemeConflicts,
   disableThemeSchemas,
   enableThemeSchemas,
+  searchProductsForPicker,
   type ConflictReport,
 } from "./actions";
 import type { ProductsJsonLdConfig } from "@/lib/json-ld-config";
@@ -20,6 +22,7 @@ export function ProductsTab({
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<ConflictReport | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   function patch(p: Partial<ProductsJsonLdConfig>) {
     setCfg({ ...cfg, ...p });
@@ -418,6 +421,14 @@ export function ProductsTab({
         </button>
         <button
           type="button"
+          onClick={() => setPickerOpen(true)}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-indigo-300 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-60"
+        >
+          Update one product
+        </button>
+        <button
+          type="button"
           onClick={applyAll}
           disabled={pending}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
@@ -425,6 +436,94 @@ export function ProductsTab({
           {pending ? "Working…" : "Update all products"}
         </button>
         {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
+      </div>
+
+      {pickerOpen && (
+        <ProductPicker
+          onClose={() => setPickerOpen(false)}
+          onPick={(id) => {
+            setPickerOpen(false);
+            setMsg(null);
+            start(async () => {
+              const r = await applyProductSchemaToOne(id);
+              setMsg(r.message);
+            });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProductPicker({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<
+    Array<{ id: string; title: string; handle: string }>
+  >([]);
+  const [pending, start] = useTransition();
+
+  function doSearch(value: string) {
+    setQ(value);
+    if (value.length < 2) {
+      setResults([]);
+      return;
+    }
+    start(async () => {
+      setResults(await searchProductsForPicker(value));
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-900">Pick a product to test</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-slate-500 hover:text-slate-900"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4">
+          <input
+            value={q}
+            onChange={(e) => doSearch(e.target.value)}
+            placeholder="Search by title or handle…"
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded focus:outline-none focus:border-indigo-500"
+            autoFocus
+          />
+          {pending && (
+            <div className="text-xs text-slate-400 mt-2">Searching…</div>
+          )}
+          {results.length > 0 && (
+            <ul className="mt-3 max-h-64 overflow-y-auto border border-slate-100 rounded">
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(r.id)}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-b-0"
+                  >
+                    <div className="font-medium text-slate-900 truncate">
+                      {r.title || r.handle}
+                    </div>
+                    <div className="text-xs text-slate-500 font-mono">
+                      {r.handle}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -264,6 +264,28 @@ export async function disableThemeSchemas(): Promise<{
   }
 }
 
+export async function searchProductsForPicker(
+  q: string,
+): Promise<Array<{ id: string; title: string; handle: string }>> {
+  if (q.length < 2) return [];
+  const rows = await prisma.resource.findMany({
+    where: {
+      type: "product",
+      OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { handle: { contains: q, mode: "insensitive" } },
+      ],
+    },
+    take: 15,
+    orderBy: { title: "asc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title ?? "",
+    handle: r.handle ?? "",
+  }));
+}
+
 export async function enableThemeSchemas(): Promise<{
   ok: boolean;
   message: string;
