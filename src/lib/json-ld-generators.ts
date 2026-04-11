@@ -268,8 +268,8 @@ function generateProductSchemaInternal(
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
       areaServed: countryName(cfg.shippingRegion),
-      shippingDetails: inlineShippingDetails,
-      hasMerchantReturnPolicy: inlineReturnPolicy,
+      shippingDetails: { "@id": SHIPPING_DETAILS_ID },
+      hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
     };
 
     if (compareAt && compareAt > price) {
@@ -344,8 +344,39 @@ function generateProductSchemaInternal(
     hasVariant: hasVariant.length > 0 ? hasVariant : undefined,
   };
 
-  // Single consolidated entity — shipping/return are inlined per offer above.
-  return prune(productGroup);
+  // Build the standalone @id-referenced nodes that the offers point at.
+  const returnPolicyNode: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@id": RETURN_POLICY_ID,
+    ...inlineReturnPolicy,
+  };
+
+  const shippingRateSettings: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@type": "ShippingRateSettings",
+    "@id": SHIPPING_RATE_ID,
+  };
+  if (cfg.freeShippingThreshold) {
+    shippingRateSettings.freeShippingThreshold = {
+      "@type": "MonetaryAmount",
+      value: String(cfg.freeShippingThreshold),
+      currency,
+    };
+  }
+
+  const shippingDetailsNode: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@id": SHIPPING_DETAILS_ID,
+    ...inlineShippingDetails,
+    shippingSettingsLink: SHIPPING_RATE_ID,
+  };
+
+  return [
+    prune(productGroup),
+    prune(returnPolicyNode),
+    prune(shippingRateSettings),
+    prune(shippingDetailsNode),
+  ];
 }
 
 // ---------- Collection ----------
