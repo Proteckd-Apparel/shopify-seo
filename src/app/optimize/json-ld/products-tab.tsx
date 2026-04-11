@@ -46,7 +46,15 @@ export function ProductsTab({
     setMsg(null);
     start(async () => {
       const r = await applyProductSchemaToAll();
-      setMsg(r.message);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+    });
+  }
+
+  function applyOne(id: string) {
+    setMsg(null);
+    start(async () => {
+      const r = await applyProductSchemaToOne(id);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
     });
   }
 
@@ -435,19 +443,28 @@ export function ProductsTab({
         >
           {pending ? "Working…" : "Update all products"}
         </button>
-        {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
       </div>
+
+      {/* Persistent result panel — never disappears so we can debug */}
+      {msg && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3 text-sm font-mono break-all">
+          <div className="text-xs uppercase text-slate-500 mb-1">Last result</div>
+          <div
+            className={
+              msg.startsWith("✅") ? "text-emerald-700" : "text-red-700"
+            }
+          >
+            {msg}
+          </div>
+        </div>
+      )}
 
       {pickerOpen && (
         <ProductPicker
           onClose={() => setPickerOpen(false)}
           onPick={(id) => {
             setPickerOpen(false);
-            setMsg(null);
-            start(async () => {
-              const r = await applyProductSchemaToOne(id);
-              setMsg(r.message);
-            });
+            applyOne(id);
           }}
         />
       )}
