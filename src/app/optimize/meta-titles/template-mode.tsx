@@ -2,10 +2,15 @@
 
 import { useState, useTransition } from "react";
 import {
+  applyMetaTitleToOne,
   bulkApplyMetaTitleTemplate,
   previewMetaTitleTemplate,
+  previewMetaTitleForResource,
+  restoreLastMetaTitleRun,
   saveMetaTitleTemplate,
+  searchResourcesForMetaPicker,
   type BulkResult,
+  type TitlePreviewSample,
 } from "./template-actions";
 import {
   TemplateBuilder,
@@ -13,6 +18,7 @@ import {
 } from "@/components/template-builder";
 import type { TemplateConfig } from "@/lib/template-engine";
 import type { TemplateScopeKey } from "@/lib/optimizer-config";
+import { ChevronLeft, ChevronRight, RotateCcw, Search } from "lucide-react";
 
 const TABS: Array<{ key: TemplateScopeKey; label: string }> = [
   { key: "products", label: "Products" },
@@ -35,12 +41,9 @@ export function MetaTitleTemplateMode({
   );
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{
-    title: string;
-    currentValue: string | null;
-    newValue: string;
-  } | null>(null);
+  const [sample, setSample] = useState<TitlePreviewSample | null>(null);
   const [bulk, setBulk] = useState<BulkResult | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const tpl = templates[scope];
 
@@ -56,19 +59,44 @@ export function MetaTitleTemplateMode({
     });
   }
 
-  function runPreview() {
+  function runPreview(index = 0) {
     setMsg(null);
     start(async () => {
-      const r = await previewMetaTitleTemplate(scope, tpl);
-      if (r.ok && r.sample) {
-        setPreview({
-          title: r.sample.title,
-          currentValue: r.sample.currentValue,
-          newValue: r.sample.newValue,
-        });
-      } else {
-        setMsg(r.message ?? "Preview failed");
-      }
+      const r = await previewMetaTitleTemplate(scope, tpl, index);
+      if (r.ok && r.sample) setSample(r.sample);
+      else setMsg(r.message ?? "Preview failed");
+    });
+  }
+
+  function previewSpecific(resourceId: string) {
+    setMsg(null);
+    start(async () => {
+      const r = await previewMetaTitleForResource(tpl, resourceId);
+      if (r.ok && r.sample) setSample(r.sample);
+      else setMsg(r.message ?? "Preview failed");
+    });
+  }
+
+  function applyOne() {
+    if (!sample) return;
+    setMsg(null);
+    start(async () => {
+      const r = await applyMetaTitleToOne(scope, tpl, sample.resourceId);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+    });
+  }
+
+  function restore() {
+    if (
+      !confirm(
+        `Restore meta titles for ${scope} from the last 60 minutes?\n\nReverts every ${scope.slice(0, -1)} the optimizer touched recently.`,
+      )
+    )
+      return;
+    setMsg(null);
+    start(async () => {
+      const r = await restoreLastMetaTitleRun(scope, 60);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
     });
   }
 
@@ -100,7 +128,7 @@ export function MetaTitleTemplateMode({
             type="button"
             onClick={() => {
               setScope(t.key);
-              setPreview(null);
+              setSample(null);
               setBulk(null);
             }}
             className={`px-4 py-2 text-sm font-medium rounded ${
@@ -163,28 +191,85 @@ export function MetaTitleTemplateMode({
 
       <TemplateBuilder value={tpl} onChange={setTpl} />
 
-      {preview && (
+      {sample && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-3 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-600 font-semibold">
-            Item Preview — {preview.title}
+          <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-wider text-slate-500">
+                Item Preview
+              </div>
+              <div className="text-sm font-semibold text-slate-900 truncate max-w-md">
+                {sample.title}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => runPreview(sample.index - 1)}
+                disabled={pending}
+                className="p-1.5 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                title="Previous"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-xs text-slate-500 px-2 tabular-nums">
+                {sample.index + 1} / {sample.total}
+              </span>
+              <button
+                type="button"
+                onClick={() => runPreview(sample.index + 1)}
+                disabled={pending}
+                className="p-1.5 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                title="Next"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                disabled={pending}
+                className="ml-2 p-1.5 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
+                title="Search for a specific item"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          <div className="p-5 space-y-3">
-            <div className="bg-amber-50 border border-amber-200 rounded p-3">
-              <div className="text-[10px] uppercase font-semibold text-amber-700">
-                Current ({preview.currentValue?.length ?? 0} chars)
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
+            <div className="md:col-span-2 p-5 space-y-3 border-r border-slate-100">
+              <div className="bg-amber-50 border border-amber-200 rounded p-3">
+                <div className="text-[10px] uppercase font-semibold text-amber-700">
+                  Current Meta Title ({sample.currentValue?.length ?? 0})
+                </div>
+                <div className="text-sm text-slate-800">
+                  {sample.currentValue || (
+                    <span className="italic text-slate-400">empty</span>
+                  )}
+                </div>
               </div>
-              <div className="text-sm text-slate-800">
-                {preview.currentValue || (
-                  <span className="italic text-slate-400">empty</span>
-                )}
+              <div className="bg-emerald-50 border border-emerald-200 rounded p-3">
+                <div className="text-[10px] uppercase font-semibold text-emerald-700 flex items-center gap-2">
+                  New Meta Title ({sample.newValue.length})
+                  {tpl.maxChars > 0 &&
+                    sample.newValue.length >= tpl.maxChars && (
+                      <span className="bg-red-500 text-white px-1 py-px rounded text-[9px]">
+                        LIMIT REACHED
+                      </span>
+                    )}
+                </div>
+                <div className="text-sm text-slate-800">{sample.newValue}</div>
               </div>
             </div>
-            <div className="bg-emerald-50 border border-emerald-200 rounded p-3">
-              <div className="text-[10px] uppercase font-semibold text-emerald-700">
-                New ({preview.newValue.length} chars)
+            {sample.imageUrl && (
+              <div className="p-5 grid place-items-center bg-slate-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`${sample.imageUrl}&width=240`}
+                  alt={sample.title}
+                  className="max-w-full max-h-64 rounded shadow"
+                />
               </div>
-              <div className="text-sm text-slate-800">{preview.newValue}</div>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -200,12 +285,22 @@ export function MetaTitleTemplateMode({
         </button>
         <button
           type="button"
-          onClick={runPreview}
+          onClick={() => runPreview(0)}
           disabled={pending}
           className="px-3 py-1.5 rounded bg-white border border-slate-300 text-sm hover:bg-slate-50 disabled:opacity-60"
         >
-          Preview on sample
+          {sample ? "Refresh preview" : "Preview"}
         </button>
+        {sample && (
+          <button
+            type="button"
+            onClick={applyOne}
+            disabled={pending}
+            className="px-4 py-1.5 rounded bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 disabled:opacity-60"
+          >
+            Update a {scope.slice(0, -1)}
+          </button>
+        )}
         <button
           type="button"
           onClick={runBulk}
@@ -214,16 +309,114 @@ export function MetaTitleTemplateMode({
         >
           {pending ? "Working…" : `Update all ${scope}`}
         </button>
-        {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
+        <button
+          type="button"
+          onClick={restore}
+          disabled={pending}
+          className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 rounded bg-white border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-60"
+          title="Revert any meta title changes made to this scope in the last 60 minutes"
+        >
+          <RotateCcw className="w-3.5 h-3.5" /> Restore
+        </button>
+        {msg && (
+          <span className="basis-full text-xs text-slate-600 mt-1">{msg}</span>
+        )}
         {bulk && (
           <span
-            className={`text-xs ml-2 ${
+            className={`basis-full text-xs mt-1 ${
               bulk.ok ? "text-emerald-700" : "text-amber-700"
             }`}
           >
             {bulk.message}
           </span>
         )}
+      </div>
+
+      {pickerOpen && (
+        <Picker
+          scope={scope}
+          onClose={() => setPickerOpen(false)}
+          onPick={(id) => {
+            setPickerOpen(false);
+            previewSpecific(id);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Picker({
+  scope,
+  onClose,
+  onPick,
+}: {
+  scope: TemplateScopeKey;
+  onClose: () => void;
+  onPick: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<
+    Array<{ id: string; title: string; handle: string }>
+  >([]);
+  const [pending, start] = useTransition();
+  function doSearch(value: string) {
+    setQ(value);
+    if (value.length < 2) {
+      setResults([]);
+      return;
+    }
+    start(async () =>
+      setResults(await searchResourcesForMetaPicker(scope, value)),
+    );
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+          <h3 className="font-semibold text-slate-900">
+            Pick a {scope.slice(0, -1)} to preview
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-sm text-slate-500 hover:text-slate-900"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-4">
+          <input
+            value={q}
+            onChange={(e) => doSearch(e.target.value)}
+            placeholder="Search by title or handle…"
+            className="w-full px-3 py-2 text-sm border border-slate-200 rounded focus:outline-none focus:border-indigo-500"
+            autoFocus
+          />
+          {pending && (
+            <div className="text-xs text-slate-400 mt-2">Searching…</div>
+          )}
+          {results.length > 0 && (
+            <ul className="mt-3 max-h-64 overflow-y-auto border border-slate-100 rounded">
+              {results.map((r) => (
+                <li key={r.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(r.id)}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-b-0"
+                  >
+                    <div className="font-medium text-slate-900 truncate">
+                      {r.title || r.handle}
+                    </div>
+                    <div className="text-xs text-slate-500 font-mono truncate">
+                      {r.handle}
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
