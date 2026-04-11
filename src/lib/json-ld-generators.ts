@@ -170,6 +170,68 @@ function generateProductSchemaInternal(
         }))
       : undefined;
 
+  // ----- Build the inlined shipping + return policy blocks ONCE so we can
+  // copy them into every variant's offer (instead of using @id refs which
+  // create extra top-level entities in the JSON-LD).
+  const countries = parseCountries(cfg.shippingCountries, cfg.shippingRegion);
+  const inlineReturnPolicy: Record<string, unknown> = {
+    "@type": "MerchantReturnPolicy",
+    merchantReturnLink: cfg.returnPolicyUrl || undefined,
+    url: cfg.returnPolicyUrl || undefined,
+    returnPolicyCategory:
+      cfg.allowReturns === "always"
+        ? "https://schema.org/MerchantReturnUnlimitedWindow"
+        : cfg.allowReturns === "no_returns"
+          ? "https://schema.org/MerchantReturnNotPermitted"
+          : "https://schema.org/MerchantReturnFiniteReturnWindow",
+    applicableCountry: countries,
+    merchantReturnDays:
+      cfg.allowReturns === "x_days" ? cfg.returnDaysLimit : undefined,
+    returnMethod:
+      cfg.returnMethod === "in_store"
+        ? "https://schema.org/ReturnInStore"
+        : "https://schema.org/ReturnByMail",
+    returnFees:
+      cfg.returnFees === "free_shipping"
+        ? "https://schema.org/FreeReturn"
+        : cfg.returnFees === "restocking_fee"
+          ? "https://schema.org/RestockingFees"
+          : "https://schema.org/ReturnFeesCustomerResponsibility",
+    refundType: "https://schema.org/FullRefund",
+  };
+
+  const inlineShippingDetails: Record<string, unknown> = {
+    "@type": "OfferShippingDetails",
+    shippingDestination: countries.map((c) => ({
+      "@type": "DefinedRegion",
+      addressCountry: c,
+    })),
+    shippingRate: {
+      "@type": "MonetaryAmount",
+      value: "0.00",
+      currency,
+    },
+    deliveryTime: {
+      "@type": "ShippingDeliveryTime",
+      handlingTime: {
+        "@type": "QuantitativeValue",
+        minValue: cfg.handlingTimeMinDays,
+        maxValue: cfg.handlingTimeMaxDays,
+        unitCode: "DAY",
+      },
+      ...(cfg.shippingTimeMinDays && cfg.shippingTimeMaxDays
+        ? {
+            transitTime: {
+              "@type": "QuantitativeValue",
+              minValue: cfg.shippingTimeMinDays,
+              maxValue: cfg.shippingTimeMaxDays,
+              unitCode: "DAY",
+            },
+          }
+        : {}),
+    },
+  };
+
   // ----- hasVariant array
   const hasVariant = variants.map((v) => {
     const size = findOption(v, ["Size"]);
@@ -206,8 +268,8 @@ function generateProductSchemaInternal(
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
       areaServed: countryName(cfg.shippingRegion),
-      shippingDetails: { "@id": SHIPPING_DETAILS_ID },
-      hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
+      shippingDetails: inlineShippingDetails,
+      hasMerchantReturnPolicy: inlineReturnPolicy,
     };
 
     if (compareAt && compareAt > price) {
@@ -282,92 +344,8 @@ function generateProductSchemaInternal(
     hasVariant: hasVariant.length > 0 ? hasVariant : undefined,
   };
 
-  // ----- MerchantReturnPolicy as a separate referenced node
-  const countries = parseCountries(cfg.shippingCountries, cfg.shippingRegion);
-  const returnPolicy = {
-    "@context": "https://schema.org/",
-    "@type": "MerchantReturnPolicy",
-    "@id": RETURN_POLICY_ID,
-    merchantReturnLink: cfg.returnPolicyUrl || undefined,
-    url: cfg.returnPolicyUrl || undefined,
-    returnPolicyCategory:
-      cfg.allowReturns === "always"
-        ? "https://schema.org/MerchantReturnUnlimitedWindow"
-        : cfg.allowReturns === "no_returns"
-          ? "https://schema.org/MerchantReturnNotPermitted"
-          : "https://schema.org/MerchantReturnFiniteReturnWindow",
-    applicableCountry: countries,
-    merchantReturnDays:
-      cfg.allowReturns === "x_days" ? cfg.returnDaysLimit : undefined,
-    returnMethod:
-      cfg.returnMethod === "in_store"
-        ? "https://schema.org/ReturnInStore"
-        : "https://schema.org/ReturnByMail",
-    returnFees:
-      cfg.returnFees === "free_shipping"
-        ? "https://schema.org/FreeReturn"
-        : cfg.returnFees === "restocking_fee"
-          ? "https://schema.org/RestockingFees"
-          : "https://schema.org/ReturnFeesCustomerResponsibility",
-    refundType: "https://schema.org/FullRefund",
-  };
-
-  // ----- ShippingRateSettings
-  const shippingRateSettings: Record<string, unknown> = {
-    "@context": "https://schema.org/",
-    "@type": "ShippingRateSettings",
-    "@id": SHIPPING_RATE_ID,
-  };
-  if (cfg.freeShippingThreshold) {
-    shippingRateSettings.freeShippingThreshold = {
-      "@type": "MonetaryAmount",
-      value: String(cfg.freeShippingThreshold),
-      currency,
-    };
-  }
-
-  // ----- OfferShippingDetails
-  const shippingDetails = {
-    "@id": SHIPPING_DETAILS_ID,
-    "@context": "https://schema.org/",
-    "@type": "OfferShippingDetails",
-    shippingDestination: countries.map((c) => ({
-      "@type": "DefinedRegion",
-      addressCountry: c,
-    })),
-    shippingRate: {
-      "@type": "MonetaryAmount",
-      value: cfg.freeShipping ? "0.00" : "0.00",
-      currency,
-    },
-    deliveryTime: {
-      "@type": "ShippingDeliveryTime",
-      handlingTime: {
-        "@type": "QuantitativeValue",
-        minValue: cfg.handlingTimeMinDays,
-        maxValue: cfg.handlingTimeMaxDays,
-        unitCode: "DAY",
-      },
-      ...(cfg.shippingTimeMinDays && cfg.shippingTimeMaxDays
-        ? {
-            transitTime: {
-              "@type": "QuantitativeValue",
-              minValue: cfg.shippingTimeMinDays,
-              maxValue: cfg.shippingTimeMaxDays,
-              unitCode: "DAY",
-            },
-          }
-        : {}),
-    },
-    shippingSettingsLink: SHIPPING_RATE_ID,
-  };
-
-  return [
-    prune(productGroup),
-    prune(returnPolicy),
-    prune(shippingRateSettings),
-    prune(shippingDetails),
-  ];
+  // Single consolidated entity — shipping/return are inlined per offer above.
+  return prune(productGroup);
 }
 
 // ---------- Collection ----------
