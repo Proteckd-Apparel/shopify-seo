@@ -23,12 +23,27 @@ import {
 } from "@/lib/shopify-theme";
 import { shopInfo } from "@/lib/shopify";
 
+// Common Liquid files where JSON-LD scripts live across popular themes.
+// Impulse uses snippets/structured-data.liquid + product-template;
+// Dawn uses snippets/structured-data.liquid;
+// most heavily-customized themes inline schemas in main-product.liquid.
 const THEME_FILES_TO_SCAN = [
   "layout/theme.liquid",
-  "sections/main-product.liquid",
-  "templates/product.liquid",
-  "snippets/product-template.liquid",
+  // Impulse + Pixel Union
   "snippets/structured-data.liquid",
+  "snippets/structured-data-product.liquid",
+  "snippets/product-template.liquid",
+  "sections/product-template.liquid",
+  "sections/product.liquid",
+  // Dawn / Shopify 2.0
+  "sections/main-product.liquid",
+  "sections/main-collection-product-grid.liquid",
+  "sections/main-article.liquid",
+  "templates/product.liquid",
+  // Prestige
+  "snippets/json-ld-product.liquid",
+  "snippets/json-ld-collection.liquid",
+  "snippets/json-ld-article.liquid",
 ];
 
 async function getShop(): Promise<{ domain: string; name: string }> {
