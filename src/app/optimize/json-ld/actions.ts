@@ -14,9 +14,17 @@ import {
 import type { JsonLdConfig } from "@/lib/json-ld-config";
 import { setJsonLd } from "@/lib/shopify-metafields";
 import {
+  debugJudgeMe,
   fetchJudgeMeAggregate,
   fetchJudgeMeBatch,
+  type JudgeMeDebugReport,
 } from "@/lib/judge-me";
+
+export async function debugJudgeMeForResource(
+  resourceId: string,
+): Promise<JudgeMeDebugReport> {
+  return debugJudgeMe(resourceId);
+}
 import type { RealReviews } from "@/lib/json-ld-generators";
 import {
   commentOutSchemas,

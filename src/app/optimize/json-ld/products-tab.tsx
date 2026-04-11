@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   applyProductSchemaToAll,
   applyProductSchemaToOne,
+  debugJudgeMeForResource,
   saveJsonLdConfig,
   scanThemeConflicts,
   disableThemeSchemas,
@@ -23,6 +24,17 @@ export function ProductsTab({
   const [msg, setMsg] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<ConflictReport | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [debugReport, setDebugReport] = useState<unknown>(null);
+  const [debugPickerOpen, setDebugPickerOpen] = useState(false);
+
+  function runJudgeMeDebug(id: string) {
+    setDebugReport(null);
+    setMsg(null);
+    start(async () => {
+      const r = await debugJudgeMeForResource(id);
+      setDebugReport(r);
+    });
+  }
 
   function patch(p: Partial<ProductsJsonLdConfig>) {
     setCfg({ ...cfg, ...p });
@@ -454,6 +466,14 @@ export function ProductsTab({
         </button>
         <button
           type="button"
+          onClick={() => setDebugPickerOpen(true)}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 disabled:opacity-60"
+        >
+          Test Judge.me
+        </button>
+        <button
+          type="button"
           onClick={applyAll}
           disabled={pending}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
@@ -478,6 +498,7 @@ export function ProductsTab({
 
       {pickerOpen && (
         <ProductPicker
+          title="Pick a product to test"
           onClose={() => setPickerOpen(false)}
           onPick={(id) => {
             setPickerOpen(false);
@@ -485,14 +506,47 @@ export function ProductsTab({
           }}
         />
       )}
+
+      {debugPickerOpen && (
+        <ProductPicker
+          title="Pick a product to test Judge.me"
+          onClose={() => setDebugPickerOpen(false)}
+          onPick={(id) => {
+            setDebugPickerOpen(false);
+            runJudgeMeDebug(id);
+          }}
+        />
+      )}
+
+      {debugReport != null && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs uppercase text-slate-500">
+              Judge.me debug
+            </div>
+            <button
+              type="button"
+              onClick={() => setDebugReport(null)}
+              className="text-xs text-slate-500 hover:text-slate-900"
+            >
+              ✕
+            </button>
+          </div>
+          <pre className="text-[10px] font-mono overflow-x-auto bg-slate-50 p-3 rounded max-h-96">
+            {JSON.stringify(debugReport, null, 2)}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
 
 function ProductPicker({
+  title = "Pick a product to test",
   onClose,
   onPick,
 }: {
+  title?: string;
   onClose: () => void;
   onPick: (id: string) => void;
 }) {
@@ -517,7 +571,7 @@ function ProductPicker({
     <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-md shadow-xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-900">Pick a product to test</h3>
+          <h3 className="font-semibold text-slate-900">{title}</h3>
           <button
             type="button"
             onClick={onClose}
