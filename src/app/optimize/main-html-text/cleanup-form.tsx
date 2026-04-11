@@ -9,6 +9,7 @@ import {
   searchResourcesForPicker,
   type CleanupPreview,
 } from "./actions";
+import { revertLastBulkRun } from "./revert-actions";
 import type { HtmlCleanupConfig } from "@/lib/optimizer-config";
 
 const TABS = [
@@ -79,6 +80,20 @@ export function CleanupForm({
     setMsg(null);
     start(async () => {
       const r = await applyCleanupToAll(scope);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+    });
+  }
+
+  function revert() {
+    if (
+      !confirm(
+        `Revert ALL bodyHtml changes made to ${scope} in the last 60 minutes?\n\nThis restores the previous body for every resource the optimizer touched recently. Only run this if a bulk run made things worse.`,
+      )
+    )
+      return;
+    setMsg(null);
+    start(async () => {
+      const r = await revertLastBulkRun(scope, 60);
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
     });
   }
@@ -293,6 +308,15 @@ export function CleanupForm({
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
         >
           {pending ? "Working…" : `Update all ${scope}`}
+        </button>
+        <button
+          type="button"
+          onClick={revert}
+          disabled={pending}
+          className="ml-auto px-3 py-1.5 rounded bg-white border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-50 disabled:opacity-60"
+          title="Revert any bodyHtml changes made to this scope in the last 60 minutes"
+        >
+          ↶ Revert last 60 min
         </button>
         {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
       </div>
