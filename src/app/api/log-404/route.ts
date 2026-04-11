@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
@@ -32,6 +32,72 @@ function rateLimit(ip: string): boolean {
 
 export function OPTIONS() {
   return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
+// 1x1 transparent GIF — what we return for image-beacon GETs so the
+// browser is happy and adblockers see a normal image load.
+const PIXEL = Buffer.from(
+  "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+  "base64",
+);
+
+async function recordHit(args: {
+  url: string;
+  referrer: string | null;
+  userAgent: string | null;
+}): Promise<{ redirect: string | null }> {
+  let redirect: string | null = null;
+  await prisma.notFound.upsert({
+    where: { url: args.url },
+    create: { url: args.url, referrer: args.referrer, userAgent: args.userAgent },
+    update: {
+      count: { increment: 1 },
+      lastSeen: new Date(),
+      referrer: args.referrer,
+      userAgent: args.userAgent,
+    },
+  });
+  const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+  if (settings?.redirect404ToHome) {
+    const existing = await prisma.redirect.findUnique({
+      where: { fromPath: args.url },
+    });
+    redirect = existing ? existing.toPath : "/";
+  }
+  return { redirect };
+}
+
+// GET variant — used by the image-beacon snippet so adblockers don't
+// strip the request. Returns a 1x1 GIF regardless.
+export async function GET(request: Request) {
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+  if (!rateLimit(ip)) {
+    return new Response(PIXEL, {
+      status: 200,
+      headers: { ...CORS_HEADERS, "Content-Type": "image/gif" },
+    });
+  }
+  const u = new URL(request.url);
+  const url = (u.searchParams.get("u") ?? "").trim().slice(0, 2000);
+  const referrer = u.searchParams.get("r")?.slice(0, 2000) ?? null;
+  const userAgent =
+    request.headers.get("user-agent")?.slice(0, 500) ?? null;
+  if (url) {
+    try {
+      await recordHit({ url, referrer, userAgent });
+    } catch {}
+  }
+  return new Response(PIXEL, {
+    status: 200,
+    headers: {
+      ...CORS_HEADERS,
+      "Content-Type": "image/gif",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 export async function POST(request: Request) {
@@ -59,15 +125,19 @@ export async function POST(request: Request) {
   const referrer = body.referrer?.slice(0, 2000) ?? null;
   const userAgent = body.userAgent?.slice(0, 500) ?? null;
 
+  let redirect: string | null = null;
   try {
-    await prisma.notFound.upsert({
-      where: { url },
-      create: { url, referrer, userAgent },
-      update: { count: { increment: 1 }, lastSeen: new Date(), referrer, userAgent },
-    });
+    const r = await recordHit({ url, referrer, userAgent });
+    redirect = r.redirect;
   } catch {
-    return new Response("db error", { status: 500, headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ ok: false }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    });
   }
 
-  return new Response("ok", { status: 200, headers: CORS_HEADERS });
+  return new Response(JSON.stringify({ ok: true, redirect }), {
+    status: 200,
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+  });
 }

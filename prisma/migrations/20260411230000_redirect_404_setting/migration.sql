@@ -1,0 +1,1 @@
+ALTER TABLE "Settings" ADD COLUMN "redirect404ToHome" BOOLEAN NOT NULL DEFAULT false;

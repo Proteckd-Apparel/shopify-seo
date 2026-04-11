@@ -20,6 +20,7 @@ model Settings {
   judgeMeToken    String?  // Judge.me API token for pulling real reviews
   replicateToken  String?  // Replicate API token for ESRGAN upscaling
   optimizerRules  String?  // JSON: AI rules / brand voice / instructions
+  redirect404ToHome Boolean @default(false) // 404 fallback: bounce to homepage
   updatedAt       DateTime @updatedAt
 }
 

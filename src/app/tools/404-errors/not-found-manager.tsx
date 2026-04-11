@@ -14,16 +14,9 @@ const SNIPPET = `{%- if template contains '404' -%}
 <script>
 (function(){
   try {
-    fetch('APP_URL/api/log-404', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        url: window.location.pathname + window.location.search,
-        referrer: document.referrer || null,
-        userAgent: navigator.userAgent
-      }),
-      keepalive: true
-    });
+    var u = encodeURIComponent(window.location.pathname + window.location.search);
+    var r = encodeURIComponent(document.referrer || '');
+    new Image().src = 'APP_URL/api/log-404?u=' + u + '&r=' + r + '&t=' + Date.now();
   } catch(e) {}
 })();
 </script>
