@@ -13,6 +13,7 @@ export function SettingsForm({
     shopifyToken: string;
     anthropicKey: string;
     judgeMeToken: string;
+    replicateToken: string;
     optimizerRules: string;
   };
 }) {
@@ -68,6 +69,21 @@ export function SettingsForm({
             type="password"
             defaultValue={defaults.judgeMeToken}
             placeholder="optional"
+            className="input"
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="Replicate"
+        description="API token for ESRGAN image upscaling. Get one at replicate.com → API tokens. Costs ~$0.005 per image."
+      >
+        <Field label="API token">
+          <input
+            name="replicateToken"
+            type="password"
+            defaultValue={defaults.replicateToken}
+            placeholder="r8_..."
             className="input"
           />
         </Field>

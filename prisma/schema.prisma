@@ -18,8 +18,26 @@ model Settings {
   shopifyToken    String?  // Admin API access token
   anthropicKey    String?
   judgeMeToken    String?  // Judge.me API token for pulling real reviews
+  replicateToken  String?  // Replicate API token for ESRGAN upscaling
   optimizerRules  String?  // JSON: AI rules / brand voice / instructions
   updatedAt       DateTime @updatedAt
+}
+
+// Snapshot of original image bytes before any compress/rename operation,
+// so we can revert later. Stores file content directly in Postgres.
+model ImageBackup {
+  id          String   @id @default(cuid())
+  resourceId  String
+  originalUrl String
+  filename    String
+  contentType String
+  bytes       Bytes
+  width       Int?
+  height      Int?
+  createdAt   DateTime @default(now())
+
+  @@index([resourceId])
+  @@index([createdAt])
 }
 
 // ---------- Cached Shopify resources ----------

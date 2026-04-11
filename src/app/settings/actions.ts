@@ -22,6 +22,8 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
     String(formData.get("anthropicKey") || "").trim() || null;
   const judgeMeToken =
     String(formData.get("judgeMeToken") || "").trim() || null;
+  const replicateToken =
+    String(formData.get("replicateToken") || "").trim() || null;
   const optimizerRules =
     String(formData.get("optimizerRules") || "").trim() || null;
 
@@ -32,6 +34,7 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       shopifyToken,
       anthropicKey,
       judgeMeToken,
+      replicateToken,
       optimizerRules,
     },
     create: {
@@ -40,6 +43,7 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       shopifyToken,
       anthropicKey,
       judgeMeToken,
+      replicateToken,
       optimizerRules,
     },
   });

@@ -13,6 +13,141 @@ export type ShopifyTheme = {
   role: string;
 };
 
+// ---------- Theme asset listing ----------
+
+const THEME_ASSETS_QUERY = /* GraphQL */ `
+  query ThemeAssets($id: ID!, $cursor: String) {
+    theme(id: $id) {
+      files(first: 250, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          filename
+          size
+          contentType
+        }
+      }
+    }
+  }
+`;
+
+export type ThemeAsset = {
+  filename: string;
+  size: number;
+  contentType: string;
+};
+
+// Returns every file in the theme, paginated. Caller filters for images.
+export async function listThemeAssets(themeId: string): Promise<ThemeAsset[]> {
+  const out: ThemeAsset[] = [];
+  let cursor: string | null = null;
+  while (true) {
+    const data: {
+      theme: {
+        files: {
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+          nodes: Array<{
+            filename: string;
+            size: number;
+            contentType: string;
+          }>;
+        };
+      } | null;
+    } = await shopifyGraphQL(THEME_ASSETS_QUERY, { id: themeId, cursor });
+    const nodes = data.theme?.files?.nodes ?? [];
+    for (const n of nodes) out.push(n);
+    if (!data.theme?.files?.pageInfo?.hasNextPage) break;
+    cursor = data.theme.files.pageInfo.endCursor;
+  }
+  return out;
+}
+
+export function isThemeImage(asset: ThemeAsset): boolean {
+  if (!asset.filename.startsWith("assets/")) return false;
+  return /\.(jpe?g|png|webp|gif|avif)$/i.test(asset.filename);
+}
+
+// Read a single theme asset and return its raw bytes by following the
+// CDN URL Shopify exposes via the file body. We use a separate query that
+// returns the asset's URL.
+const THEME_ASSET_URL_QUERY = /* GraphQL */ `
+  query ThemeAssetUrl($id: ID!, $filename: String!) {
+    theme(id: $id) {
+      file(filename: $filename) {
+        filename
+        body {
+          ... on OnlineStoreThemeFileBodyText { content }
+          ... on OnlineStoreThemeFileBodyUrl { url }
+        }
+      }
+    }
+  }
+`;
+
+export async function readThemeAssetBytes(
+  themeId: string,
+  filename: string,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const data: {
+    theme: {
+      file: {
+        body: { content?: string; url?: string };
+      } | null;
+    } | null;
+  } = await shopifyGraphQL(THEME_ASSET_URL_QUERY, {
+    id: themeId,
+    filename,
+  });
+  const body = data.theme?.file?.body;
+  if (!body?.url) return null;
+  const res = await fetch(body.url);
+  if (!res.ok) return null;
+  const arr = await res.arrayBuffer();
+  return {
+    buffer: Buffer.from(arr),
+    contentType: res.headers.get("content-type") ?? "application/octet-stream",
+  };
+}
+
+// Upload a new theme asset (binary). Reuses the themeFilesUpsert mutation
+// already in this file but with a base64 body for binary content.
+const THEME_BINARY_UPSERT = /* GraphQL */ `
+  mutation ThemeFilesUpsert(
+    $themeId: ID!
+    $files: [OnlineStoreThemeFilesUpsertFileInput!]!
+  ) {
+    themeFilesUpsert(themeId: $themeId, files: $files) {
+      upsertedThemeFiles { filename }
+      userErrors { code field message }
+    }
+  }
+`;
+
+export async function writeThemeBinaryAsset(
+  themeId: string,
+  filename: string,
+  bytes: Buffer,
+): Promise<void> {
+  const base64 = bytes.toString("base64");
+  const data: {
+    themeFilesUpsert: {
+      userErrors: Array<{ code: string; field: string[]; message: string }>;
+    };
+  } = await shopifyGraphQL(THEME_BINARY_UPSERT, {
+    themeId,
+    files: [
+      {
+        filename,
+        body: { type: "BASE64", value: base64 },
+      },
+    ],
+  });
+  if (data.themeFilesUpsert.userErrors?.length) {
+    throw new Error(
+      data.themeFilesUpsert.userErrors.map((e) => e.message).join("; "),
+    );
+  }
+}
+
 const THEMES_QUERY = /* GraphQL */ `
   query Themes {
     themes(first: 20) {

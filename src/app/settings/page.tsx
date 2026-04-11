@@ -20,6 +20,7 @@ export default async function SettingsPage() {
           shopifyToken: s?.shopifyToken ?? "",
           anthropicKey: s?.anthropicKey ?? "",
           judgeMeToken: s?.judgeMeToken ?? "",
+          replicateToken: s?.replicateToken ?? "",
           optimizerRules: s?.optimizerRules ?? "",
         }}
       />
