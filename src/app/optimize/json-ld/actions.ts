@@ -10,7 +10,9 @@ import {
   generateProductSchema,
   generateCollectionSchema,
   generateLocalBusinessSchema,
+  siteWideSchemas,
 } from "@/lib/json-ld-generators";
+import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
 import type { JsonLdConfig } from "@/lib/json-ld-config";
 import { setJsonLd } from "@/lib/shopify-metafields";
 import {
@@ -249,6 +251,50 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
       processed: collections.length,
       saved,
       failed,
+    };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+// ---------- Apply: Site-wide schemas (Other tab) ----------
+
+export async function applySiteWideSchemas(): Promise<ApplyResult> {
+  try {
+    const cfg = await loadOptimizerConfig();
+    const shop = await getShop();
+    const schemas = siteWideSchemas(cfg.jsonLd, shop);
+    if (schemas.length === 0) {
+      return {
+        ok: false,
+        message: "No site-wide schemas enabled — turn some on first.",
+      };
+    }
+    // Get the shop GID so we can write a shop-level metafield
+    const info = await shopInfo();
+    const shopGid = info.shop?.id;
+    if (!shopGid) return { ok: false, message: "Could not resolve shop GID" };
+
+    await ensureJsonMetafieldDefinition(
+      "SHOP",
+      "custom",
+      "json_ld_sitewide",
+      "JSON-LD Site-wide",
+    );
+    await setMetafield({
+      ownerId: shopGid,
+      namespace: "custom",
+      key: "json_ld_sitewide",
+      type: "json",
+      value: JSON.stringify(schemas),
+    });
+    revalidatePath("/optimize/json-ld");
+    return {
+      ok: true,
+      message: `Saved ${schemas.length} site-wide schema(s) to shop metafield`,
+      processed: schemas.length,
+      saved: schemas.length,
+      failed: 0,
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };

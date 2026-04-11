@@ -65,11 +65,11 @@ export async function shopifyGraphQL<T = unknown>(
 // Convenience: shop info ping (used by Settings to validate creds)
 export async function shopInfo(creds?: ShopifyCreds) {
   return shopifyGraphQL<{
-    shop: { name: string; primaryDomain: { url: string } };
+    shop: { id: string; name: string; primaryDomain: { url: string } };
   }>(
     `#graphql
     query ShopInfo {
-      shop { name primaryDomain { url } }
+      shop { id name primaryDomain { url } }
     }`,
     {},
     creds,

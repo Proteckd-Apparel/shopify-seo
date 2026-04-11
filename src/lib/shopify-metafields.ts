@@ -33,7 +33,7 @@ export type MetafieldInput = {
 // Idempotent — if the definition already exists Shopify returns a TAKEN code
 // which we ignore. Definitions also need an ownerType per resource scope.
 export async function ensureJsonMetafieldDefinition(
-  ownerType: "PRODUCT" | "COLLECTION" | "ARTICLE",
+  ownerType: "PRODUCT" | "COLLECTION" | "ARTICLE" | "SHOP",
   namespace = "custom",
   key = "json_ld",
   name = "JSON-LD",

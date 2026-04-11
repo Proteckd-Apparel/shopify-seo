@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { saveJsonLdConfig } from "./actions";
+import { applySiteWideSchemas, saveJsonLdConfig } from "./actions";
 import type { OtherJsonLdConfig } from "@/lib/json-ld-config";
 
 const TYPES: Array<{ key: keyof OtherJsonLdConfig; label: string; hint: string }> = [
@@ -26,6 +26,21 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
     start(async () => {
       const r = await saveJsonLdConfig({ other: cfg });
       setMsg(r.message);
+    });
+  }
+
+  function apply() {
+    setMsg(null);
+    start(async () => {
+      // Save first so the latest toggles are persisted, then write the
+      // shop-level metafield that the storefront snippet reads.
+      const s = await saveJsonLdConfig({ other: cfg });
+      if (!s.ok) {
+        setMsg(s.message);
+        return;
+      }
+      const r = await applySiteWideSchemas();
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
     });
   }
 
@@ -75,6 +90,16 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
         </p>
         <pre className="bg-slate-50 border border-slate-100 rounded p-3 text-xs font-mono overflow-x-auto whitespace-pre">
 {`{%- comment -%} Shopify SEO: JSON-LD injection {%- endcomment -%}
+
+{%- comment -%} Site-wide (WebSite / Organization / Blog): renders on every page {%- endcomment -%}
+{%- if shop.metafields.custom.json_ld_sitewide -%}
+  {%- assign sitewide = shop.metafields.custom.json_ld_sitewide.value -%}
+  {%- for s in sitewide -%}
+    <script type="application/ld+json">{{ s | json }}</script>
+  {%- endfor -%}
+{%- endif -%}
+
+{%- comment -%} Per-page schemas (Product / Collection / Article) {%- endcomment -%}
 {%- if request.page_type == 'product' and product.metafields.custom.json_ld -%}
   <script type="application/ld+json">{{ product.metafields.custom.json_ld | json }}</script>
 {%- endif -%}
@@ -96,7 +121,23 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
         >
           Save settings
         </button>
-        {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
+        <button
+          type="button"
+          onClick={apply}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
+        >
+          {pending ? "Working…" : "Save & Apply to store"}
+        </button>
+        {msg && (
+          <span
+            className={`text-xs ml-2 ${
+              msg.startsWith("✅") ? "text-emerald-700" : "text-slate-600"
+            }`}
+          >
+            {msg}
+          </span>
+        )}
       </div>
     </div>
   );
