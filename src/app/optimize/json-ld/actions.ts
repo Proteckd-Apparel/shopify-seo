@@ -71,11 +71,18 @@ const THEME_FILES_TO_SCAN = [
 async function getShop(): Promise<{ domain: string; name: string }> {
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
   let name = settings?.shopDomain ?? "";
+  // Always prefer the customer-facing primary domain (e.g. www.proteckd.com)
+  // over the .myshopify.com admin domain.
+  let domain = settings?.shopDomain ?? "";
   try {
     const info = await shopInfo();
     name = info.shop?.name ?? name;
+    const primary = info.shop?.primaryDomain?.url;
+    if (primary) {
+      domain = primary.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    }
   } catch {}
-  return { domain: settings?.shopDomain ?? "", name };
+  return { domain, name };
 }
 
 // ---------- Save settings ----------
