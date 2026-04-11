@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import {
   applyCollectionSchemaToAll,
+  previewCollectionSchema,
   saveJsonLdConfig,
+  searchCollectionsForPicker,
 } from "./actions";
 import type { CollectionsJsonLdConfig } from "@/lib/json-ld-config";
 
@@ -15,6 +17,31 @@ export function CollectionsTab({
   const [cfg, setCfg] = useState(initial);
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [previewJson, setPreviewJson] = useState<string | null>(null);
+  const [results, setResults] = useState<
+    Array<{ id: string; title: string; handle: string }>
+  >([]);
+  const [q, setQ] = useState("");
+
+  function doSearch(value: string) {
+    setQ(value);
+    if (value.length < 2) {
+      setResults([]);
+      return;
+    }
+    start(async () => setResults(await searchCollectionsForPicker(value)));
+  }
+
+  function runPreview(id: string) {
+    setPreviewJson(null);
+    setPickerOpen(false);
+    start(async () => {
+      const r = await previewCollectionSchema(id);
+      if (r.ok && r.json) setPreviewJson(r.json);
+      else setMsg("❌ " + (r.message ?? "Preview failed"));
+    });
+  }
 
   function patch(p: Partial<CollectionsJsonLdConfig>) {
     setCfg({ ...cfg, ...p });
@@ -81,6 +108,14 @@ export function CollectionsTab({
         </button>
         <button
           type="button"
+          onClick={() => setPickerOpen(true)}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+        >
+          Preview JSON
+        </button>
+        <button
+          type="button"
           onClick={applyAll}
           disabled={pending}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
@@ -89,6 +124,83 @@ export function CollectionsTab({
         </button>
         {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
       </div>
+
+      {previewJson && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs uppercase text-slate-500">
+              Generated JSON-LD ({previewJson.length.toLocaleString()} bytes)
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(previewJson)}
+                className="text-xs text-indigo-600 hover:underline"
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewJson(null)}
+                className="text-xs text-slate-500 hover:text-slate-900"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <pre className="text-[10px] font-mono overflow-x-auto bg-slate-50 p-3 rounded max-h-96">
+            {previewJson}
+          </pre>
+        </div>
+      )}
+
+      {pickerOpen && (
+        <div className="fixed inset-0 bg-black/40 grid place-items-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <h3 className="font-semibold text-slate-900">
+                Pick a collection to preview
+              </h3>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="text-sm text-slate-500 hover:text-slate-900"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4">
+              <input
+                value={q}
+                onChange={(e) => doSearch(e.target.value)}
+                placeholder="Search by title or handle…"
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded focus:outline-none focus:border-indigo-500"
+                autoFocus
+              />
+              {results.length > 0 && (
+                <ul className="mt-3 max-h-64 overflow-y-auto border border-slate-100 rounded">
+                  {results.map((r) => (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        onClick={() => runPreview(r.id)}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-slate-900 truncate">
+                          {r.title || r.handle}
+                        </div>
+                        <div className="text-xs text-slate-500 font-mono">
+                          {r.handle}
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

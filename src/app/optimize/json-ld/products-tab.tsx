@@ -5,6 +5,7 @@ import {
   applyProductSchemaToAll,
   applyProductSchemaToOne,
   debugJudgeMeForResource,
+  previewProductSchema,
   saveJsonLdConfig,
   scanThemeConflicts,
   disableThemeSchemas,
@@ -26,6 +27,8 @@ export function ProductsTab({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [debugReport, setDebugReport] = useState<unknown>(null);
   const [debugPickerOpen, setDebugPickerOpen] = useState(false);
+  const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
+  const [previewJson, setPreviewJson] = useState<string | null>(null);
 
   function runJudgeMeDebug(id: string) {
     setDebugReport(null);
@@ -33,6 +36,16 @@ export function ProductsTab({
     start(async () => {
       const r = await debugJudgeMeForResource(id);
       setDebugReport(r);
+    });
+  }
+
+  function runPreview(id: string) {
+    setPreviewJson(null);
+    setMsg(null);
+    start(async () => {
+      const r = await previewProductSchema(id);
+      if (r.ok && r.json) setPreviewJson(r.json);
+      else setMsg("❌ " + (r.message ?? "Preview failed"));
     });
   }
 
@@ -458,6 +471,14 @@ export function ProductsTab({
         </button>
         <button
           type="button"
+          onClick={() => setPreviewPickerOpen(true)}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+        >
+          Preview JSON
+        </button>
+        <button
+          type="button"
           onClick={() => setPickerOpen(true)}
           disabled={pending}
           className="px-4 py-1.5 rounded bg-white border border-indigo-300 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-60"
@@ -516,6 +537,46 @@ export function ProductsTab({
             runJudgeMeDebug(id);
           }}
         />
+      )}
+
+      {previewPickerOpen && (
+        <ProductPicker
+          title="Preview generated JSON-LD"
+          onClose={() => setPreviewPickerOpen(false)}
+          onPick={(id) => {
+            setPreviewPickerOpen(false);
+            runPreview(id);
+          }}
+        />
+      )}
+
+      {previewJson && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs uppercase text-slate-500">
+              Generated JSON-LD ({previewJson.length.toLocaleString()} bytes)
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(previewJson)}
+                className="text-xs text-indigo-600 hover:underline"
+              >
+                Copy
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewJson(null)}
+                className="text-xs text-slate-500 hover:text-slate-900"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+          <pre className="text-[10px] font-mono overflow-x-auto bg-slate-50 p-3 rounded max-h-96">
+            {previewJson}
+          </pre>
+        </div>
       )}
 
       {debugReport != null && (

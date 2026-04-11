@@ -271,6 +271,72 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
   }
 }
 
+// ---------- Preview (no write) ----------
+
+export async function previewProductSchema(
+  resourceId: string,
+): Promise<{ ok: boolean; json?: string; message?: string }> {
+  try {
+    const cfg = await loadOptimizerConfig();
+    const r = await prisma.resource.findUnique({
+      where: { id: resourceId },
+      include: { images: true },
+    });
+    if (!r) return { ok: false, message: "Resource not found" };
+    const shop = await getShop();
+    let reviews: RealReviews | null = null;
+    try {
+      const agg = await fetchJudgeMeAggregate(r.id);
+      if (agg) {
+        reviews = {
+          rating: agg.rating,
+          count: agg.count,
+          reviews: agg.reviews.map((rv) => ({
+            rating: rv.rating,
+            title: rv.title,
+            body: rv.body,
+            reviewer: rv.reviewer.name,
+            date: rv.created_at,
+          })),
+        };
+      }
+    } catch {}
+    const schema = generateProductSchema(
+      r,
+      cfg.jsonLd.products,
+      shop,
+      reviews,
+      cfg.jsonLd.other.breadcrumb,
+    );
+    return { ok: true, json: JSON.stringify(schema, null, 2) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+export async function previewCollectionSchema(
+  resourceId: string,
+): Promise<{ ok: boolean; json?: string; message?: string }> {
+  try {
+    const cfg = await loadOptimizerConfig();
+    const r = await prisma.resource.findUnique({
+      where: { id: resourceId },
+      include: { images: true },
+    });
+    if (!r) return { ok: false, message: "Resource not found" };
+    const shop = await getShop();
+    const schema = generateCollectionSchema(
+      r,
+      cfg.jsonLd.collections,
+      shop,
+      cfg.jsonLd.other.breadcrumb,
+    );
+    return { ok: true, json: JSON.stringify(schema, null, 2) };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
 // ---------- Apply: Articles ----------
 
 export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
@@ -430,10 +496,20 @@ export async function disableThemeSchemas(): Promise<{
 export async function searchProductsForPicker(
   q: string,
 ): Promise<Array<{ id: string; title: string; handle: string }>> {
+  return searchResources("product", q);
+}
+
+export async function searchCollectionsForPicker(
+  q: string,
+): Promise<Array<{ id: string; title: string; handle: string }>> {
+  return searchResources("collection", q);
+}
+
+async function searchResources(type: string, q: string) {
   if (q.length < 2) return [];
   const rows = await prisma.resource.findMany({
     where: {
-      type: "product",
+      type,
       OR: [
         { title: { contains: q, mode: "insensitive" } },
         { handle: { contains: q, mode: "insensitive" } },
