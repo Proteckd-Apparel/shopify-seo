@@ -56,7 +56,8 @@ export async function shopifyGraphQL<T = unknown>(
 
   const json = (await res.json()) as { data?: T; errors?: unknown };
   if (json.errors) {
-    throw new ShopifyError("GraphQL errors", res.status, json.errors);
+    const detail = JSON.stringify(json.errors).slice(0, 500);
+    throw new ShopifyError(`GraphQL: ${detail}`, res.status, json.errors);
   }
   return json.data as T;
 }
