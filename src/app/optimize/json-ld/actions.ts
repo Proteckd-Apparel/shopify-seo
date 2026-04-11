@@ -44,6 +44,11 @@ const THEME_FILES_TO_SCAN = [
   "snippets/json-ld-product.liquid",
   "snippets/json-ld-collection.liquid",
   "snippets/json-ld-article.liquid",
+  // Impulse customizations on Proteckd
+  "sections/article-template.liquid",
+  "sections/main-collection.liquid",
+  "sections/faq.liquid",
+  "snippets/product-template-variables.liquid",
 ];
 
 async function getShop(): Promise<{ domain: string; name: string }> {
