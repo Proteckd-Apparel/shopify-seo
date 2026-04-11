@@ -117,15 +117,38 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
   {%- endfor -%}
 {%- endif -%}
 
-{%- comment -%} Per-page schemas (Product / Collection / Article) {%- endcomment -%}
+{%- comment -%} Per-page schemas (Product / Collection / Article).
+    Each metafield value can be either a single object or an array of nodes.
+    Loop emits one script per node so Google parses them as distinct entities. {%- endcomment -%}
 {%- if request.page_type == 'product' and product.metafields.custom.json_ld -%}
-  <script type="application/ld+json">{{ product.metafields.custom.json_ld | json }}</script>
+  {%- assign jl = product.metafields.custom.json_ld.value -%}
+  {%- if jl[0] -%}
+    {%- for node in jl -%}
+      <script type="application/ld+json">{{ node | json }}</script>
+    {%- endfor -%}
+  {%- else -%}
+    <script type="application/ld+json">{{ jl | json }}</script>
+  {%- endif -%}
 {%- endif -%}
 {%- if request.page_type == 'collection' and collection.metafields.custom.json_ld -%}
-  <script type="application/ld+json">{{ collection.metafields.custom.json_ld | json }}</script>
+  {%- assign jl = collection.metafields.custom.json_ld.value -%}
+  {%- if jl[0] -%}
+    {%- for node in jl -%}
+      <script type="application/ld+json">{{ node | json }}</script>
+    {%- endfor -%}
+  {%- else -%}
+    <script type="application/ld+json">{{ jl | json }}</script>
+  {%- endif -%}
 {%- endif -%}
 {%- if request.page_type == 'article' and article.metafields.custom.json_ld -%}
-  <script type="application/ld+json">{{ article.metafields.custom.json_ld | json }}</script>
+  {%- assign jl = article.metafields.custom.json_ld.value -%}
+  {%- if jl[0] -%}
+    {%- for node in jl -%}
+      <script type="application/ld+json">{{ node | json }}</script>
+    {%- endfor -%}
+  {%- else -%}
+    <script type="application/ld+json">{{ jl | json }}</script>
+  {%- endif -%}
 {%- endif -%}`}
         </pre>
       </div>
