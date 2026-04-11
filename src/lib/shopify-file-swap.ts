@@ -336,6 +336,57 @@ export type SwapResult = {
   newUrl: string;
 };
 
+// Replace a product image with a new one downloaded from a remote URL.
+// Used by the Upscale Photos feature — we send Replicate's upscaled output
+// URL and Shopify ingests it directly. Same swap dance as renameProductImage.
+export async function replaceProductImageFromUrl(args: {
+  productId: string;
+  oldImageUrl: string;
+  newImageUrl: string;
+  newFilename: string;
+  altText?: string | null;
+}): Promise<SwapResult> {
+  const existing = await findProductMediaIdForImage(
+    args.productId,
+    args.oldImageUrl,
+  );
+  if (!existing)
+    throw new Error("Could not find product media for image URL");
+
+  // Download the new image so we can re-stage with our preferred filename
+  const res = await fetch(args.newImageUrl);
+  if (!res.ok)
+    throw new Error(`Failed to fetch upscaled image: ${res.status}`);
+  const contentType = res.headers.get("content-type") ?? "image/png";
+  const arr = await res.arrayBuffer();
+  const buffer = Buffer.from(arr);
+  const ext =
+    (contentType.split("/")[1]?.split(";")[0] ?? "png").replace("jpeg", "jpg");
+  const fullFilename = `${args.newFilename}.${ext}`;
+
+  const { resourceUrl } = await stageBytes(buffer, fullFilename, contentType);
+  const { mediaId: newMediaId, imageUrl: newUrl } =
+    await attachMediaToProduct(
+      args.productId,
+      resourceUrl,
+      args.altText ?? existing.alt,
+    );
+
+  await new Promise((r) => setTimeout(r, 1500));
+
+  try {
+    await moveMediaToPosition(args.productId, newMediaId, existing.position);
+  } catch {}
+  await detachProductMedia(args.productId, [existing.mediaId]);
+
+  return {
+    oldImageId: existing.mediaId,
+    newImageId: newMediaId,
+    oldUrl: args.oldImageUrl,
+    newUrl,
+  };
+}
+
 export async function renameProductImage(args: {
   productId: string;
   oldImageUrl: string;
