@@ -44,7 +44,32 @@ export type ResourceConfig = {
   translations: boolean;
 };
 
-export type TemplatePurpose = "altText" | "metaTitle" | "metaDescription";
+export type TemplatePurpose =
+  | "altText"
+  | "metaTitle"
+  | "metaDescription"
+  | "photoFilename";
+
+export type PhotoFilenameConfig = {
+  enabled: boolean;
+  scope: "all" | "published" | "drafts";
+  doNotReoptimize: boolean;
+  maxChars: number;
+  removeDuplicateWords: boolean;
+  removeSmallWords: boolean;
+  disableSuffix: boolean;
+  // Per resource type
+};
+
+export const DEFAULT_PHOTO_FILENAME_CONFIG: PhotoFilenameConfig = {
+  enabled: true,
+  scope: "published",
+  doNotReoptimize: true,
+  maxChars: 90,
+  removeDuplicateWords: true,
+  removeSmallWords: false,
+  disableSuffix: false,
+};
 export type TemplateScopeKey = "products" | "collections" | "articles" | "pages";
 
 // One TemplateConfig per (purpose, scope) — e.g. templates.altText.products.
@@ -81,6 +106,12 @@ export type OptimizerConfig = {
     collections: HtmlCleanupConfig;
     articles: HtmlCleanupConfig;
     pages: HtmlCleanupConfig;
+  };
+  // Photo Filenames — per resource type
+  photoFilenames: {
+    products: PhotoFilenameConfig;
+    collections: PhotoFilenameConfig;
+    articles: PhotoFilenameConfig;
   };
 };
 
@@ -152,6 +183,11 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
       aiInstructions: "",
     },
   },
+  photoFilenames: {
+    products: { ...DEFAULT_PHOTO_FILENAME_CONFIG },
+    collections: { ...DEFAULT_PHOTO_FILENAME_CONFIG },
+    articles: { ...DEFAULT_PHOTO_FILENAME_CONFIG, scope: "all" },
+  },
 };
 
 export function getTemplate(
@@ -186,6 +222,10 @@ export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
         htmlCleanup: {
           ...DEFAULT_OPTIMIZER_CONFIG.htmlCleanup,
           ...(parsed.htmlCleanup ?? {}),
+        },
+        photoFilenames: {
+          ...DEFAULT_OPTIMIZER_CONFIG.photoFilenames,
+          ...(parsed.photoFilenames ?? {}),
         },
         jsonLd: {
           ...DEFAULT_OPTIMIZER_CONFIG.jsonLd,
