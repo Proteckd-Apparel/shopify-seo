@@ -48,7 +48,26 @@ export type TemplatePurpose =
   | "altText"
   | "metaTitle"
   | "metaDescription"
-  | "photoFilename";
+  | "photoFilename"
+  | "title";
+
+export type TitleOptimizerConfig = {
+  enabled: boolean;
+  scope: "all" | "published" | "drafts";
+  removeBrTags: boolean;
+  clearWhitespace: boolean;
+  aiRewrite: boolean;
+  aiInstructions: string;
+};
+
+export const DEFAULT_TITLE_CONFIG: TitleOptimizerConfig = {
+  enabled: false,
+  scope: "published",
+  removeBrTags: true,
+  clearWhitespace: true,
+  aiRewrite: false,
+  aiInstructions: "",
+};
 
 export type PhotoFilenameConfig = {
   enabled: boolean;
@@ -112,6 +131,13 @@ export type OptimizerConfig = {
     products: PhotoFilenameConfig;
     collections: PhotoFilenameConfig;
     articles: PhotoFilenameConfig;
+  };
+  // Real H1 titles (customer-visible)
+  titles: {
+    products: TitleOptimizerConfig;
+    collections: TitleOptimizerConfig;
+    articles: TitleOptimizerConfig;
+    pages: TitleOptimizerConfig;
   };
 };
 
@@ -188,6 +214,12 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
     collections: { ...DEFAULT_PHOTO_FILENAME_CONFIG },
     articles: { ...DEFAULT_PHOTO_FILENAME_CONFIG, scope: "all" },
   },
+  titles: {
+    products: { ...DEFAULT_TITLE_CONFIG },
+    collections: { ...DEFAULT_TITLE_CONFIG },
+    articles: { ...DEFAULT_TITLE_CONFIG, scope: "all" },
+    pages: { ...DEFAULT_TITLE_CONFIG },
+  },
 };
 
 export function getTemplate(
@@ -226,6 +258,10 @@ export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
         photoFilenames: {
           ...DEFAULT_OPTIMIZER_CONFIG.photoFilenames,
           ...(parsed.photoFilenames ?? {}),
+        },
+        titles: {
+          ...DEFAULT_OPTIMIZER_CONFIG.titles,
+          ...(parsed.titles ?? {}),
         },
         jsonLd: {
           ...DEFAULT_OPTIMIZER_CONFIG.jsonLd,

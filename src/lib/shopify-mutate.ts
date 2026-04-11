@@ -158,6 +158,117 @@ export async function updateResourceSeo(
   });
 }
 
+// ---------- Real H1 title updates ----------
+//
+// Note: SEO title (the <title> tag) is on a separate seo.title field — use
+// updateResourceSeo for that. THIS function updates the customer-visible
+// title that shows on product cards, the cart, order emails, etc.
+
+const PRODUCT_TITLE_UPDATE = /* GraphQL */ `
+  mutation ProductTitleUpdate($input: ProductInput!) {
+    productUpdate(input: $input) {
+      product { id title }
+      userErrors { field message }
+    }
+  }
+`;
+
+const COLLECTION_TITLE_UPDATE = /* GraphQL */ `
+  mutation CollectionTitleUpdate($input: CollectionInput!) {
+    collectionUpdate(input: $input) {
+      collection { id title }
+      userErrors { field message }
+    }
+  }
+`;
+
+const PAGE_TITLE_UPDATE_REAL = /* GraphQL */ `
+  mutation PageTitleUpdate($id: ID!, $page: PageUpdateInput!) {
+    pageUpdate(id: $id, page: $page) {
+      page { id title }
+      userErrors { field message }
+    }
+  }
+`;
+
+const ARTICLE_TITLE_UPDATE_REAL = /* GraphQL */ `
+  mutation ArticleTitleUpdate($id: ID!, $article: ArticleUpdateInput!) {
+    articleUpdate(id: $id, article: $article) {
+      article { id title }
+      userErrors { field message }
+    }
+  }
+`;
+
+export async function updateResourceTitle(
+  resourceId: string,
+  type: string,
+  newTitle: string,
+  source: "manual" | "ai" | "rule" = "manual",
+  model?: string,
+) {
+  const existing = await prisma.resource.findUnique({
+    where: { id: resourceId },
+  });
+  if (!existing) throw new Error(`Resource not found: ${resourceId}`);
+
+  if (type === "product") {
+    const data = await shopifyGraphQL<{
+      productUpdate: MutationResult<{ product: { id: string; title: string } }>;
+    }>(PRODUCT_TITLE_UPDATE, {
+      input: { id: resourceId, title: newTitle },
+    });
+    throwOnUserErrors(data.productUpdate.userErrors);
+  } else if (type === "collection") {
+    const data = await shopifyGraphQL<{
+      collectionUpdate: MutationResult<{
+        collection: { id: string; title: string };
+      }>;
+    }>(COLLECTION_TITLE_UPDATE, {
+      input: { id: resourceId, title: newTitle },
+    });
+    throwOnUserErrors(data.collectionUpdate.userErrors);
+  } else if (type === "page") {
+    const data = await shopifyGraphQL<{
+      pageUpdate: MutationResult<{ page: { id: string; title: string } }>;
+    }>(PAGE_TITLE_UPDATE_REAL, {
+      id: resourceId,
+      page: { title: newTitle },
+    });
+    throwOnUserErrors(data.pageUpdate.userErrors);
+  } else if (type === "article") {
+    const data = await shopifyGraphQL<{
+      articleUpdate: MutationResult<{
+        article: { id: string; title: string };
+      }>;
+    }>(ARTICLE_TITLE_UPDATE_REAL, {
+      id: resourceId,
+      article: { title: newTitle },
+    });
+    throwOnUserErrors(data.articleUpdate.userErrors);
+  } else {
+    throw new Error(`Unsupported resource type: ${type}`);
+  }
+
+  if (newTitle !== existing.title) {
+    await prisma.optimization.create({
+      data: {
+        resourceId,
+        field: "title",
+        oldValue: existing.title,
+        newValue: newTitle,
+        source,
+        model,
+      },
+    });
+  }
+
+  await prisma.resource.update({
+    where: { id: resourceId },
+    data: { title: newTitle },
+  });
+}
+
 // ---------- Body HTML updates ----------
 
 const PRODUCT_BODY_UPDATE = /* GraphQL */ `
