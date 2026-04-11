@@ -130,9 +130,13 @@ model BrokenLink {
 }
 
 model SkipPage {
-  id        String   @id @default(cuid())
-  pattern   String   @unique // glob/path that the optimizer should ignore
-  createdAt DateTime @default(now())
+  // Either resourceId (skip a specific scanned resource) OR pattern (glob),
+  // depending on how the user added it.
+  id         String   @id @default(cuid())
+  resourceId String?  @unique
+  pattern    String?  @unique
+  type       String   // product | collection | article | page (or "*" for pattern-based)
+  createdAt  DateTime @default(now())
 }
 
 model JobRun {

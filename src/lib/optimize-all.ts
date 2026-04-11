@@ -73,12 +73,23 @@ export async function runOptimizeAll(
     if (rc.scope === "published") where.status = { not: "draft" };
     else if (rc.scope === "drafts") where.status = "draft";
 
-    const resources = await prisma.resource.findMany({
+    const skipped = await prisma.skipPage.findMany({
+      where: { type: SINGULAR[rk] },
+      select: { resourceId: true },
+    });
+    const skippedIds = new Set(
+      skipped.map((s) => s.resourceId).filter(Boolean) as string[],
+    );
+
+    const all = await prisma.resource.findMany({
       where,
       include: { images: true },
     });
+    const resources = all.filter((r) => !skippedIds.has(r.id));
 
-    pushLog(`Processing ${resources.length} ${rk}`);
+    pushLog(
+      `Processing ${resources.length} ${rk}${skippedIds.size ? ` (${skippedIds.size} skipped)` : ""}`,
+    );
 
     for (const r of resources) {
       // Skip rules
