@@ -8,22 +8,35 @@ import {
   clearAllResolved,
   createRedirectFor404,
   findSimilarResource,
+  setRedirect404ToHome,
 } from "./actions";
 
-const SNIPPET = `{%- if template contains '404' -%}
+function buildSnippet(redirectToHome: boolean): string {
+  const redirectLine = redirectToHome
+    ? "\n    setTimeout(function(){ window.location.replace('/'); }, 50);"
+    : "";
+  return `{%- if template contains '404' -%}
 <script>
 (function(){
   try {
     var u = encodeURIComponent(window.location.pathname + window.location.search);
     var r = encodeURIComponent(document.referrer || '');
-    new Image().src = 'APP_URL/api/log-404?u=' + u + '&r=' + r + '&t=' + Date.now();
+    new Image().src = 'APP_URL/api/log-404?u=' + u + '&r=' + r + '&t=' + Date.now();${redirectLine}
   } catch(e) {}
 })();
 </script>
 {%- endif -%}`;
+}
 
-export function NotFoundManager({ initial }: { initial: NotFoundRow[] }) {
+export function NotFoundManager({
+  initial,
+  redirectToHome: initialRedirect,
+}: {
+  initial: NotFoundRow[];
+  redirectToHome: boolean;
+}) {
   const [rows, setRows] = useState(initial);
+  const [redirectToHome, setRedirectToHomeState] = useState(initialRedirect);
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -33,12 +46,23 @@ export function NotFoundManager({ initial }: { initial: NotFoundRow[] }) {
     suggestions: { title: string; url: string }[];
   } | null>(null);
 
+  const snippet = buildSnippet(redirectToHome);
+
   function copySnippet() {
     navigator.clipboard.writeText(
-      SNIPPET.replace("APP_URL", window.location.origin),
+      snippet.replace("APP_URL", window.location.origin),
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  function toggleRedirect() {
+    const next = !redirectToHome;
+    setRedirectToHomeState(next);
+    start(async () => {
+      const r = await setRedirect404ToHome(next);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message + " — re-copy the snippet and re-paste it into theme.liquid");
+    });
   }
 
   function onDelete(id: string) {
@@ -96,8 +120,29 @@ export function NotFoundManager({ initial }: { initial: NotFoundRow[] }) {
     <div className="space-y-4 max-w-5xl">
       {/* Snippet card */}
       <div className="bg-white border border-slate-200 rounded-lg">
-        <div className="px-5 py-3 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-600 font-semibold">
-          Tracking snippet
+        <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+          <div className="text-xs uppercase tracking-wider text-slate-600 font-semibold">
+            Tracking snippet
+          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+            <span>Redirect 404s to homepage</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={redirectToHome}
+              onClick={toggleRedirect}
+              disabled={pending}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+                redirectToHome ? "bg-indigo-600" : "bg-slate-300"
+              } disabled:opacity-60`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${
+                  redirectToHome ? "translate-x-4" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </label>
         </div>
         <div className="p-5 space-y-3">
           <p className="text-sm text-slate-600">
@@ -105,10 +150,18 @@ export function NotFoundManager({ initial }: { initial: NotFoundRow[] }) {
             <code className="text-xs font-mono px-1 py-0.5 bg-slate-100 rounded">
               theme.liquid
             </code>
-            . It only fires on 404 templates and posts the failed URL back here.
+            . It only fires on 404 templates and pings this app with the
+            failed URL.
+            {redirectToHome && (
+              <>
+                {" "}
+                <strong>Redirect mode is on</strong> — visitors will be sent to
+                the homepage right after the 404 is logged.
+              </>
+            )}
           </p>
           <pre className="bg-slate-900 text-slate-100 text-xs p-3 rounded font-mono overflow-x-auto whitespace-pre">
-            {SNIPPET.replace(
+            {snippet.replace(
               "APP_URL",
               typeof window !== "undefined" ? window.location.origin : "https://your-app.app",
             )}

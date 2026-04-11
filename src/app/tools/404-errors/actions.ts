@@ -119,6 +119,22 @@ export async function findSimilarResource(
   }
 }
 
+export async function setRedirect404ToHome(
+  enabled: boolean,
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    await prisma.settings.upsert({
+      where: { id: 1 },
+      create: { id: 1, redirect404ToHome: enabled },
+      update: { redirect404ToHome: enabled },
+    });
+    revalidatePath("/tools/404-errors");
+    return { ok: true, message: enabled ? "Redirect enabled" : "Redirect disabled" };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
 export async function exportCsv(): Promise<string> {
   const rows = await prisma.notFound.findMany({
     orderBy: { lastSeen: "desc" },
