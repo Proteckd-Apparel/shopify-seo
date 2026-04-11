@@ -79,35 +79,38 @@ export async function fetchJudgeMeAggregate(
 ): Promise<JudgeMeAggregate | null> {
   const externalId = shopifyIdToExternal(productGid);
 
-  // Aggregate count + average comes from the widget endpoint and uses
-  // external_id directly — no internal id lookup needed.
-  const summary = await jm<{
-    rating?: number;
-    count?: number;
-    average?: number;
-  }>("/widgets/product_review_aggregate", { external_id: externalId });
-
-  const count = summary?.count ?? 0;
-  if (!summary || count === 0) return null;
-
-  const avg = summary.average ?? summary.rating ?? 0;
-
-  // Get the JM internal product id so we can pull recent review bodies.
+  // 1) Look up Judge.me's internal product id from the Shopify external id.
   const jmProductId = await lookupJmProductId(externalId);
-  let reviews: JudgeMeReview[] = [];
-  if (jmProductId) {
-    const list = await jm<{ reviews: JudgeMeReview[] }>("/reviews", {
-      product_id: jmProductId,
-      per_page: reviewLimit,
-      page: 1,
-    });
-    reviews = list?.reviews ?? [];
-  }
+  if (!jmProductId) return null;
+
+  // 2) Pull recent reviews. We use a larger per_page to get an accurate
+  //    average over the visible page; total count comes from the response
+  //    pagination if Judge.me includes it, otherwise we fall back to the
+  //    review array length.
+  const list = await jm<{
+    reviews: JudgeMeReview[];
+    total?: number;
+    current_page?: number;
+    per_page?: number;
+  }>("/reviews", {
+    product_id: jmProductId,
+    per_page: 100, // pull a healthy sample to compute the average
+    page: 1,
+  });
+  const reviews = list?.reviews ?? [];
+  if (reviews.length === 0) return null;
+
+  // Average rating across what we fetched (Judge.me doesn't return an
+  // aggregate field on the reviews endpoint).
+  const sum = reviews.reduce((s, r) => s + (r.rating ?? 0), 0);
+  const avg = sum / reviews.length;
+  // If Judge.me gave us a total, trust it; otherwise use the page length.
+  const count = list?.total ?? reviews.length;
 
   return {
     rating: Math.round(avg * 10) / 10,
     count,
-    reviews,
+    reviews: reviews.slice(0, reviewLimit),
   };
 }
 
