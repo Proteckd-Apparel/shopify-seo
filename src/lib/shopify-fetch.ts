@@ -31,7 +31,6 @@ export type ShopifyCollection = {
   handle: string;
   title: string;
   descriptionHtml: string;
-  onlineStoreUrl: string | null;
   seo: { title: string | null; description: string | null };
   image: ShopifyImage | null;
 };
@@ -121,7 +120,6 @@ const COLLECTIONS_QUERY = /* GraphQL */ `
         handle
         title
         descriptionHtml
-        onlineStoreUrl
         seo { title description }
         image { id url altText width height }
       }

@@ -340,7 +340,7 @@ export async function runScan(
   onProgress?.({ phase: "collections", totalPages, totalIssues });
   for await (const batch of fetchAllCollections()) {
     for (const c of batch as ShopifyCollection[]) {
-      const url = c.onlineStoreUrl;
+      const url = `/collections/${c.handle}`;
       await persistResource({
         id: c.id,
         type: "collection",
