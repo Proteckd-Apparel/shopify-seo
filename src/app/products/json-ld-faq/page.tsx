@@ -1,7 +1,8 @@
-import { MessageSquare, Code2 } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
+import { FaqEditButton } from "./faq-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -31,14 +32,17 @@ export default async function JsonLdFaqPage({
       />
 
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-xs text-amber-900 mb-6 max-w-3xl">
-        <div className="font-semibold mb-1">Theme integration required</div>
-        FAQs are stored as a metafield on each product (
+        <div className="font-semibold mb-1">How this works</div>
+        Edit FAQs per product. Saving writes them to a{" "}
+        <code className="font-mono bg-amber-100 px-1 rounded">custom.faqs</code>{" "}
+        metafield AND appends an{" "}
+        <code className="font-mono bg-amber-100 px-1 rounded">FAQPage</code>{" "}
+        schema to the product&apos;s{" "}
         <code className="font-mono bg-amber-100 px-1 rounded">
-          custom.faqs
-        </code>
-        ). To make Google index them, your theme&apos;s product template must
-        include a JSON-LD snippet that reads from this metafield. Snippet code
-        comes in the next phase — for now you can edit the data.
+          custom.json_ld
+        </code>{" "}
+        metafield, so it renders alongside your Product schema. No extra theme
+        snippet required.
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
@@ -68,14 +72,10 @@ export default async function JsonLdFaqPage({
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    disabled
-                    title="Inline FAQ editor coming next"
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-100 text-slate-500 cursor-not-allowed"
-                  >
-                    <Code2 className="w-3 h-3" /> Edit FAQs
-                  </button>
+                  <FaqEditButton
+                    productId={p.id}
+                    productTitle={p.title ?? p.handle ?? ""}
+                  />
                 </td>
               </tr>
             ))}

@@ -98,6 +98,7 @@ export function generateProductSchema(
   shop: { domain: string; name: string },
   reviews?: RealReviews | null,
   withBreadcrumb = false,
+  faqs?: FaqItem[] | null,
 ): Record<string, unknown> {
   const arr = generateProductSchemaInternal(
     resource,
@@ -108,6 +109,9 @@ export function generateProductSchema(
   const out = Array.isArray(arr) ? [...arr] : [arr];
   if (withBreadcrumb) {
     out.push(buildBreadcrumbForResource(resource, shop));
+  }
+  if (faqs && faqs.length > 0) {
+    out.push(generateFaqSchema(faqs));
   }
   return out as unknown as Record<string, unknown>;
 }
@@ -580,6 +584,23 @@ export function generateArticleSchema(
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     url,
   });
+}
+
+export type FaqItem = { question: string; answer: string };
+
+export function generateFaqSchema(items: FaqItem[]) {
+  return {
+    "@context": "https://schema.org/",
+    "@type": "FAQPage",
+    mainEntity: items.map((it) => ({
+      "@type": "Question",
+      name: it.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: it.answer,
+      },
+    })),
+  };
 }
 
 export function generateBlogSchema(shop: { domain: string; name: string }) {
