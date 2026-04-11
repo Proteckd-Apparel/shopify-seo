@@ -506,19 +506,30 @@ function ProductPicker({
           {results.length > 0 && (
             <ul className="mt-3 max-h-64 overflow-y-auto border border-slate-100 rounded">
               {results.map((r) => (
-                <li key={r.id}>
+                <li
+                  key={r.id}
+                  className="flex items-center justify-between px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-b-0"
+                >
                   <button
                     type="button"
                     onClick={() => onPick(r.id)}
-                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm border-b border-slate-100 last:border-b-0"
+                    className="text-left flex-1 min-w-0"
                   >
                     <div className="font-medium text-slate-900 truncate">
                       {r.title || r.handle}
                     </div>
-                    <div className="text-xs text-slate-500 font-mono">
+                    <div className="text-xs text-slate-500 font-mono truncate">
                       {r.handle}
                     </div>
                   </button>
+                  <a
+                    href={`https://www.proteckd.com/products/${r.handle}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-3 shrink-0 text-xs text-indigo-600 hover:underline"
+                  >
+                    view ↗
+                  </a>
                 </li>
               ))}
             </ul>
