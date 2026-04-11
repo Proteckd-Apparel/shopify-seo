@@ -3,6 +3,9 @@ import { Code2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { loadOptimizerConfig } from "@/lib/optimizer-config";
 import { ProductsTab } from "./products-tab";
+import { CollectionsTab } from "./collections-tab";
+import { LocalBusinessTab } from "./localbusiness-tab";
+import { OtherTab } from "./other-tab";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 600;
@@ -65,22 +68,12 @@ export default async function JsonLdPage({
 
       {tab === "products" && <ProductsTab initial={cfg.jsonLd.products} />}
       {tab === "collections" && (
-        <Stub message="Collections schema lives here next pass." />
+        <CollectionsTab initial={cfg.jsonLd.collections} />
       )}
       {tab === "localbusiness" && (
-        <Stub message="LocalBusiness form lives here next pass." />
+        <LocalBusinessTab initial={cfg.jsonLd.localBusiness} />
       )}
-      {tab === "other" && (
-        <Stub message="WebSite / Organization / Article / Blog / Breadcrumb toggles live here next pass." />
-      )}
-    </div>
-  );
-}
-
-function Stub({ message }: { message: string }) {
-  return (
-    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 max-w-3xl">
-      {message}
+      {tab === "other" && <OtherTab initial={cfg.jsonLd.other} />}
     </div>
   );
 }

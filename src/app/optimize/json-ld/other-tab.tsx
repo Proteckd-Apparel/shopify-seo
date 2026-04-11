@@ -1,0 +1,129 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { saveJsonLdConfig } from "./actions";
+import type { OtherJsonLdConfig } from "@/lib/json-ld-config";
+
+const TYPES: Array<{ key: keyof OtherJsonLdConfig; label: string; hint: string }> = [
+  { key: "website", label: "WebSite", hint: "Site search action for Google" },
+  { key: "organization", label: "Organization", hint: "Brand identity / logo" },
+  { key: "article", label: "Article", hint: "Blog article schema" },
+  { key: "blog", label: "Blog", hint: "Blog index schema" },
+  { key: "breadcrumb", label: "Breadcrumb", hint: "Page hierarchy for Google" },
+];
+
+export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
+  const [cfg, setCfg] = useState(initial);
+  const [pending, start] = useTransition();
+  const [msg, setMsg] = useState<string | null>(null);
+
+  function patch(k: keyof OtherJsonLdConfig, v: boolean) {
+    setCfg({ ...cfg, [k]: v });
+  }
+
+  function save() {
+    setMsg(null);
+    start(async () => {
+      const r = await saveJsonLdConfig({ other: cfg });
+      setMsg(r.message);
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-900">
+        Enable or disable various JSON-LD schema types to improve SEO. These
+        site-wide schemas (WebSite, Organization, Blog) and per-page schemas
+        (Article, Breadcrumb) will be rendered when you add the snippet
+        below to your <code className="font-mono bg-amber-100 px-1 rounded">theme.liquid</code>.
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg">
+        <div className="px-5 py-3 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-600 font-semibold">
+          Schema types
+        </div>
+        <ul className="divide-y divide-slate-100">
+          {TYPES.map((t) => (
+            <li
+              key={t.key}
+              className="flex items-center justify-between px-5 py-3"
+            >
+              <div>
+                <div className="text-sm font-medium text-slate-900">
+                  {t.label}
+                </div>
+                <div className="text-xs text-slate-500">{t.hint}</div>
+              </div>
+              <Toggle
+                checked={cfg[t.key]}
+                onChange={(v) => patch(t.key, v)}
+              />
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg p-5">
+        <h3 className="font-semibold text-slate-900 mb-2">
+          Theme snippet (one-time install)
+        </h3>
+        <p className="text-xs text-slate-500 mb-3">
+          Add this to your <code className="bg-slate-100 px-1 rounded font-mono">layout/theme.liquid</code>{" "}
+          inside the <code className="bg-slate-100 px-1 rounded font-mono">&lt;head&gt;</code> tag. It reads
+          the metafield this app writes and the site-wide schemas you enabled
+          above.
+        </p>
+        <pre className="bg-slate-50 border border-slate-100 rounded p-3 text-xs font-mono overflow-x-auto whitespace-pre">
+{`{%- comment -%} Shopify SEO: JSON-LD injection {%- endcomment -%}
+{%- if request.page_type == 'product' and product.metafields.custom.json_ld -%}
+  <script type="application/ld+json">{{ product.metafields.custom.json_ld | json }}</script>
+{%- endif -%}
+{%- if request.page_type == 'collection' and collection.metafields.custom.json_ld -%}
+  <script type="application/ld+json">{{ collection.metafields.custom.json_ld | json }}</script>
+{%- endif -%}
+{%- if request.page_type == 'article' and article.metafields.custom.json_ld -%}
+  <script type="application/ld+json">{{ article.metafields.custom.json_ld | json }}</script>
+{%- endif -%}`}
+        </pre>
+      </div>
+
+      <div className="sticky bottom-4 bg-white border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2 shadow-lg">
+        <button
+          type="button"
+          onClick={save}
+          disabled={pending}
+          className="px-3 py-1.5 rounded bg-slate-900 text-white text-sm font-medium hover:bg-slate-800 disabled:opacity-60"
+        >
+          Save settings
+        </button>
+        {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative w-10 h-5 rounded-full transition-colors ${
+        checked ? "bg-indigo-600" : "bg-slate-300"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow ${
+          checked ? "translate-x-5" : ""
+        }`}
+      />
+    </button>
+  );
+}
