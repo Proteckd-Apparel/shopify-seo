@@ -10,6 +10,17 @@ import {
   DEFAULT_JSON_LD_CONFIG,
   type JsonLdConfig,
 } from "./json-ld-config";
+import {
+  DEFAULT_CLEANUP_CONFIG,
+  type CleanupConfig,
+} from "./html-cleanup";
+
+export type HtmlCleanupConfig = CleanupConfig & {
+  enabled: boolean;
+  scope: "all" | "published" | "drafts";
+  aiRewrite: boolean; // off by default
+  aiInstructions: string; // free-form prompt addition for AI mode
+};
 
 export type ResourceConfig = {
   enabled: boolean;
@@ -64,6 +75,13 @@ export type OptimizerConfig = {
   templates: TemplateMap;
   // JSON-LD
   jsonLd: JsonLdConfig;
+  // Main HTML Text — per resource type
+  htmlCleanup: {
+    products: HtmlCleanupConfig;
+    collections: HtmlCleanupConfig;
+    articles: HtmlCleanupConfig;
+    pages: HtmlCleanupConfig;
+  };
 };
 
 const DEFAULT_RESOURCE_CONFIG: ResourceConfig = {
@@ -104,6 +122,36 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
   upscalePhotos: false,
   templates: {},
   jsonLd: DEFAULT_JSON_LD_CONFIG,
+  htmlCleanup: {
+    products: {
+      ...DEFAULT_CLEANUP_CONFIG,
+      enabled: true,
+      scope: "published",
+      aiRewrite: false,
+      aiInstructions: "",
+    },
+    collections: {
+      ...DEFAULT_CLEANUP_CONFIG,
+      enabled: true,
+      scope: "published",
+      aiRewrite: false,
+      aiInstructions: "",
+    },
+    articles: {
+      ...DEFAULT_CLEANUP_CONFIG,
+      enabled: true,
+      scope: "all",
+      aiRewrite: false,
+      aiInstructions: "",
+    },
+    pages: {
+      ...DEFAULT_CLEANUP_CONFIG,
+      enabled: true,
+      scope: "published",
+      aiRewrite: false,
+      aiInstructions: "",
+    },
+  },
 };
 
 export function getTemplate(
@@ -131,10 +179,14 @@ export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
   try {
     const parsed = JSON.parse(s.optimizerRules);
     if (typeof parsed === "object" && parsed && "products" in parsed) {
-      // Deep-merge jsonLd defaults so newly added fields don't break old saves
+      // Deep-merge defaults so newly added fields don't break old saves
       return {
         ...DEFAULT_OPTIMIZER_CONFIG,
         ...parsed,
+        htmlCleanup: {
+          ...DEFAULT_OPTIMIZER_CONFIG.htmlCleanup,
+          ...(parsed.htmlCleanup ?? {}),
+        },
         jsonLd: {
           ...DEFAULT_OPTIMIZER_CONFIG.jsonLd,
           ...(parsed.jsonLd ?? {}),

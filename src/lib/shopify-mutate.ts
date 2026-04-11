@@ -158,6 +158,107 @@ export async function updateResourceSeo(
   });
 }
 
+// ---------- Body HTML updates ----------
+
+const PRODUCT_BODY_UPDATE = /* GraphQL */ `
+  mutation ProductBodyUpdate($input: ProductInput!) {
+    productUpdate(input: $input) {
+      product { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+const COLLECTION_BODY_UPDATE = /* GraphQL */ `
+  mutation CollectionBodyUpdate($input: CollectionInput!) {
+    collectionUpdate(input: $input) {
+      collection { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+const PAGE_BODY_UPDATE = /* GraphQL */ `
+  mutation PageBodyUpdate($id: ID!, $page: PageUpdateInput!) {
+    pageUpdate(id: $id, page: $page) {
+      page { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+const ARTICLE_BODY_UPDATE = /* GraphQL */ `
+  mutation ArticleBodyUpdate($id: ID!, $article: ArticleUpdateInput!) {
+    articleUpdate(id: $id, article: $article) {
+      article { id }
+      userErrors { field message }
+    }
+  }
+`;
+
+export async function updateResourceBodyHtml(
+  resourceId: string,
+  type: string,
+  newHtml: string,
+  source: "manual" | "ai" | "rule" = "manual",
+  model?: string,
+) {
+  const existing = await prisma.resource.findUnique({
+    where: { id: resourceId },
+  });
+  if (!existing) throw new Error(`Resource not found: ${resourceId}`);
+
+  if (type === "product") {
+    const data = await shopifyGraphQL<{
+      productUpdate: MutationResult<{ product: { id: string } }>;
+    }>(PRODUCT_BODY_UPDATE, {
+      input: { id: resourceId, descriptionHtml: newHtml },
+    });
+    throwOnUserErrors(data.productUpdate.userErrors);
+  } else if (type === "collection") {
+    const data = await shopifyGraphQL<{
+      collectionUpdate: MutationResult<{ collection: { id: string } }>;
+    }>(COLLECTION_BODY_UPDATE, {
+      input: { id: resourceId, descriptionHtml: newHtml },
+    });
+    throwOnUserErrors(data.collectionUpdate.userErrors);
+  } else if (type === "page") {
+    const data = await shopifyGraphQL<{
+      pageUpdate: MutationResult<{ page: { id: string } }>;
+    }>(PAGE_BODY_UPDATE, {
+      id: resourceId,
+      page: { body: newHtml },
+    });
+    throwOnUserErrors(data.pageUpdate.userErrors);
+  } else if (type === "article") {
+    const data = await shopifyGraphQL<{
+      articleUpdate: MutationResult<{ article: { id: string } }>;
+    }>(ARTICLE_BODY_UPDATE, {
+      id: resourceId,
+      article: { body: newHtml },
+    });
+    throwOnUserErrors(data.articleUpdate.userErrors);
+  } else {
+    throw new Error(`Unsupported resource type: ${type}`);
+  }
+
+  await prisma.optimization.create({
+    data: {
+      resourceId,
+      field: "bodyHtml",
+      oldValue: existing.bodyHtml?.slice(0, 5000) ?? null,
+      newValue: newHtml.slice(0, 5000),
+      source,
+      model,
+    },
+  });
+
+  await prisma.resource.update({
+    where: { id: resourceId },
+    data: { bodyHtml: newHtml },
+  });
+}
+
 export async function updateImageAlt(
   imageId: string,
   alt: string,

@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.88.0",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
+    "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",
