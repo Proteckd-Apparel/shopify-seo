@@ -9,8 +9,15 @@ import {
   saveSeoTitle,
 } from "../_actions";
 import { BulkButton } from "@/components/bulk-button";
+import {
+  getTemplate,
+  loadOptimizerConfig,
+  type TemplateScopeKey,
+} from "@/lib/optimizer-config";
+import { MetaTitleTemplateMode } from "./template-mode";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 600;
 
 const PAGE_SIZE = 50;
 const MIN = 25;
@@ -20,15 +27,45 @@ export default async function MetaTitlesPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    mode?: string;
     type?: string;
     filter?: string;
     page?: string;
   }>;
 }) {
   const sp = await searchParams;
+  const mode = sp.mode ?? "template";
   const type = sp.type ?? "product";
   const filter = sp.filter ?? "all";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10));
+
+  if (mode === "template") {
+    const cfg = await loadOptimizerConfig();
+    const initialTemplates: Record<TemplateScopeKey, ReturnType<typeof getTemplate>> = {
+      products: getTemplate(cfg, "metaTitle", "products"),
+      collections: getTemplate(cfg, "metaTitle", "collections"),
+      articles: getTemplate(cfg, "metaTitle", "articles"),
+      pages: getTemplate(cfg, "metaTitle", "pages"),
+    };
+    return (
+      <div>
+        <PageHeader
+          icon={FileText}
+          title="Meta Titles"
+          description="Bulk generate via template OR edit row-by-row."
+        />
+        <div className="flex gap-1 mb-4">
+          <ModeTab href="?mode=template" current={mode} value="template">
+            Template
+          </ModeTab>
+          <ModeTab href="?mode=inline" current={mode} value="inline">
+            Inline edit
+          </ModeTab>
+        </div>
+        <MetaTitleTemplateMode initialTemplates={initialTemplates} />
+      </div>
+    );
+  }
 
   const where: Record<string, unknown> = { type };
   if (filter === "missing") where.OR = [{ seoTitle: null }, { seoTitle: "" }];
@@ -63,6 +100,15 @@ export default async function MetaTitlesPage({
         title="Meta Titles"
         description="Edit the SEO title (the <title> tag) for every resource. Saves write directly to Shopify."
       />
+
+      <div className="flex gap-1 mb-4">
+        <ModeTab href="?mode=template" current={mode} value="template">
+          Template
+        </ModeTab>
+        <ModeTab href="?mode=inline" current={mode} value="inline">
+          Inline edit
+        </ModeTab>
+      </div>
 
       <div className="mb-4">
         <BulkButton
@@ -151,6 +197,31 @@ export default async function MetaTitlesPage({
         basePath="/optimize/meta-titles"
       />
     </div>
+  );
+}
+
+function ModeTab({
+  href,
+  current,
+  value,
+  children,
+}: {
+  href: string;
+  current: string;
+  value: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`px-4 py-2 text-sm font-medium rounded ${
+        current === value
+          ? "bg-indigo-600 text-white"
+          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
 
