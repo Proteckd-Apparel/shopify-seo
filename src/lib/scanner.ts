@@ -288,7 +288,17 @@ export async function runScan(
   // "current state" — easier to reason about for the UI).
   await prisma.issue.deleteMany({ where: { scan: { id: { not: scan.id } } } });
 
+  async function safePhase(name: string, fn: () => Promise<void>) {
+    try {
+      await fn();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "unknown";
+      pushLog(`Phase ${name} FAILED: ${msg}`);
+    }
+  }
+
   // ---------- Products ----------
+  await safePhase("products", async () => {
   pushLog("Scanning products...");
   onProgress?.({ phase: "products", totalPages, totalIssues });
   for await (const batch of fetchAllProducts()) {
@@ -322,8 +332,10 @@ export async function runScan(
     }
     onProgress?.({ phase: "products", totalPages, totalIssues });
   }
+  });
 
   // ---------- Collections ----------
+  await safePhase("collections", async () => {
   pushLog("Scanning collections...");
   onProgress?.({ phase: "collections", totalPages, totalIssues });
   for await (const batch of fetchAllCollections()) {
@@ -353,8 +365,10 @@ export async function runScan(
     }
     onProgress?.({ phase: "collections", totalPages, totalIssues });
   }
+  });
 
   // ---------- Pages ----------
+  await safePhase("pages", async () => {
   pushLog("Scanning pages...");
   onProgress?.({ phase: "pages", totalPages, totalIssues });
   for await (const batch of fetchAllPages()) {
@@ -382,8 +396,10 @@ export async function runScan(
     }
     onProgress?.({ phase: "pages", totalPages, totalIssues });
   }
+  });
 
   // ---------- Articles ----------
+  await safePhase("articles", async () => {
   pushLog("Scanning articles...");
   onProgress?.({ phase: "articles", totalPages, totalIssues });
   for await (const batch of fetchAllArticles()) {
@@ -412,6 +428,7 @@ export async function runScan(
     }
     onProgress?.({ phase: "articles", totalPages, totalIssues });
   }
+  });
 
   pushLog(`Scan complete: ${totalPages} pages, ${totalIssues} issues.`);
   await prisma.scanRun.update({
