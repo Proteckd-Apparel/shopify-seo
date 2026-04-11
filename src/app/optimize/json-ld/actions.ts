@@ -14,6 +14,11 @@ import {
 import type { JsonLdConfig } from "@/lib/json-ld-config";
 import { setJsonLd } from "@/lib/shopify-metafields";
 import {
+  fetchJudgeMeAggregate,
+  fetchJudgeMeBatch,
+} from "@/lib/judge-me";
+import type { RealReviews } from "@/lib/json-ld-generators";
+import {
   commentOutSchemas,
   findExistingSchemas,
   getMainTheme,
@@ -114,9 +119,35 @@ export async function applyProductSchemaToOne(
     });
     if (!r) return { ok: false, message: "Resource not found" };
     const shop = await getShop();
-    const schema = generateProductSchema(r, cfg.jsonLd.products, shop);
+    // Best-effort Judge.me lookup; null if not configured or no reviews
+    let reviews: RealReviews | null = null;
+    try {
+      const agg = await fetchJudgeMeAggregate(r.id);
+      if (agg) {
+        reviews = {
+          rating: agg.rating,
+          count: agg.count,
+          reviews: agg.reviews.map((rv) => ({
+            rating: rv.rating,
+            title: rv.title,
+            body: rv.body,
+            reviewer: rv.reviewer.name,
+            date: rv.created_at,
+          })),
+        };
+      }
+    } catch {}
+    const schema = generateProductSchema(r, cfg.jsonLd.products, shop, reviews);
     await setJsonLd(r.id, schema);
-    return { ok: true, message: "Applied", processed: 1, saved: 1, failed: 0 };
+    return {
+      ok: true,
+      message: reviews
+        ? `Applied with ${reviews.count} real reviews`
+        : "Applied (no Judge.me reviews)",
+      processed: 1,
+      saved: 1,
+      failed: 0,
+    };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
   }
@@ -131,11 +162,37 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
       include: { images: true },
       take: 5000,
     });
+    // Pre-fetch Judge.me reviews in parallel (fast) so the per-product loop
+    // below doesn't serialize on the network.
+    let reviewMap = new Map<string, Awaited<ReturnType<typeof fetchJudgeMeAggregate>>>();
+    try {
+      const batch = await fetchJudgeMeBatch(products.map((p) => p.id));
+      for (const [k, v] of batch) reviewMap.set(k, v);
+    } catch {}
     let saved = 0;
     let failed = 0;
     for (const p of products) {
       try {
-        const schema = generateProductSchema(p, cfg.jsonLd.products, shop);
+        const agg = reviewMap.get(p.id);
+        const reviews: RealReviews | null = agg
+          ? {
+              rating: agg.rating,
+              count: agg.count,
+              reviews: agg.reviews.map((rv) => ({
+                rating: rv.rating,
+                title: rv.title,
+                body: rv.body,
+                reviewer: rv.reviewer.name,
+                date: rv.created_at,
+              })),
+            }
+          : null;
+        const schema = generateProductSchema(
+          p,
+          cfg.jsonLd.products,
+          shop,
+          reviews,
+        );
         await setJsonLd(p.id, schema);
         saved++;
       } catch {

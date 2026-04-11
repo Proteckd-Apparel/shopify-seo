@@ -20,17 +20,26 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
     String(formData.get("shopifyToken") || "").trim() || null;
   const anthropicKey =
     String(formData.get("anthropicKey") || "").trim() || null;
+  const judgeMeToken =
+    String(formData.get("judgeMeToken") || "").trim() || null;
   const optimizerRules =
     String(formData.get("optimizerRules") || "").trim() || null;
 
   await prisma.settings.upsert({
     where: { id: 1 },
-    update: { shopDomain, shopifyToken, anthropicKey, optimizerRules },
+    update: {
+      shopDomain,
+      shopifyToken,
+      anthropicKey,
+      judgeMeToken,
+      optimizerRules,
+    },
     create: {
       id: 1,
       shopDomain,
       shopifyToken,
       anthropicKey,
+      judgeMeToken,
       optimizerRules,
     },
   });

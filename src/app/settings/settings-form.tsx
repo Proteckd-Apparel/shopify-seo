@@ -12,6 +12,7 @@ export function SettingsForm({
     shopDomain: string;
     shopifyToken: string;
     anthropicKey: string;
+    judgeMeToken: string;
     optimizerRules: string;
   };
 }) {
@@ -52,6 +53,21 @@ export function SettingsForm({
             type="password"
             defaultValue={defaults.anthropicKey}
             placeholder="sk-ant-..."
+            className="input"
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="Judge.me"
+        description="API token for pulling real product reviews into your JSON-LD schema. Get it in Judge.me admin → Settings → API."
+      >
+        <Field label="API token">
+          <input
+            name="judgeMeToken"
+            type="password"
+            defaultValue={defaults.judgeMeToken}
+            placeholder="optional"
             className="input"
           />
         </Field>

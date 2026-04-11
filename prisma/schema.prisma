@@ -17,6 +17,7 @@ model Settings {
   shopDomain      String?  // e.g. mystore.myshopify.com
   shopifyToken    String?  // Admin API access token
   anthropicKey    String?
+  judgeMeToken    String?  // Judge.me API token for pulling real reviews
   optimizerRules  String?  // JSON: AI rules / brand voice / instructions
   updatedAt       DateTime @updatedAt
 }

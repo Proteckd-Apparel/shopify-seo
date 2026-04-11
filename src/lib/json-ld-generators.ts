@@ -77,20 +77,39 @@ const RETURN_POLICY_ID = "#return_policy_psk";
 const SHIPPING_RATE_ID = "#shipping_rate_settings_psk";
 const SHIPPING_DETAILS_ID = "#shipping_details_1_psk";
 
+export type RealReviews = {
+  rating: number;
+  count: number;
+  reviews: Array<{
+    rating: number;
+    title: string | null;
+    body: string;
+    reviewer: string;
+    date: string;
+  }>;
+};
+
 // Returned shape is an array of objects (ProductGroup + return policy +
 // shipping rate settings + shipping details), matching SEO King's pattern.
 export function generateProductSchema(
   resource: ResourceWithImages,
   cfg: ProductsJsonLdConfig,
   shop: { domain: string; name: string },
+  reviews?: RealReviews | null,
 ): Record<string, unknown> {
-  return generateProductSchemaInternal(resource, cfg, shop) as unknown as Record<string, unknown>;
+  return generateProductSchemaInternal(
+    resource,
+    cfg,
+    shop,
+    reviews,
+  ) as unknown as Record<string, unknown>;
 }
 
 function generateProductSchemaInternal(
   resource: ResourceWithImages,
   cfg: ProductsJsonLdConfig,
   shop: { domain: string; name: string },
+  reviews?: RealReviews | null,
 ): unknown {
   const raw = parseRaw(resource);
   const variants = raw.variants ?? [];
@@ -121,10 +140,35 @@ function generateProductSchemaInternal(
       : shop.name;
   const brand = { "@type": "Brand", name: brandName };
 
-  // ----- AggregateRating + reviews
+  // ----- AggregateRating: use real Judge.me data if we have it
   const aggregateRating = cfg.showStarRating
-    ? buildAggregateRating(productGroupId, cfg)
+    ? reviews && reviews.count > 0
+      ? {
+          "@type": "AggregateRating",
+          bestRating: 5,
+          worstRating: 1,
+          ratingValue: reviews.rating,
+          ratingCount: reviews.count,
+        }
+      : buildAggregateRating(productGroupId, cfg)
     : undefined;
+
+  // ----- Real review array (Judge.me) — embedded in the ProductGroup
+  const reviewArray =
+    reviews && reviews.reviews.length > 0
+      ? reviews.reviews.map((r) => ({
+          "@type": "Review",
+          author: { "@type": "Person", name: r.reviewer || "Verified Customer" },
+          datePublished: r.date,
+          reviewBody: r.body,
+          reviewRating: {
+            "@type": "Rating",
+            ratingValue: r.rating,
+            bestRating: 5,
+            worstRating: 1,
+          },
+        }))
+      : undefined;
 
   // ----- hasVariant array
   const hasVariant = variants.map((v) => {
@@ -233,6 +277,7 @@ function generateProductSchemaInternal(
         }
       : { "@type": "PeopleAudience" },
     aggregateRating,
+    review: reviewArray,
     variesBy: variesByForOptions(raw.options),
     hasVariant: hasVariant.length > 0 ? hasVariant : undefined,
   };
