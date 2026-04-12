@@ -125,7 +125,7 @@ export async function setBoostImages(
 // Build the robots.txt.liquid that Shopify will render. We preserve Shopify's
 // default rules via the {%- for group in robots.default_groups -%} loop and
 // inject our custom rules into each matching group.
-export function buildLiquid(rules: RobotsRule[], boostImages: boolean): string {
+function buildLiquid(rules: RobotsRule[], boostImages: boolean): string {
   // Group rules by user agent
   const byUa = new Map<string, RobotsRule[]>();
   for (const r of rules) {
