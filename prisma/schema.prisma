@@ -21,6 +21,8 @@ model Settings {
   replicateToken  String?  // Replicate API token for ESRGAN upscaling
   optimizerRules  String?  // JSON: AI rules / brand voice / instructions
   redirect404ToHome Boolean @default(false) // 404 fallback: bounce to homepage
+  robotsRules     String?  // JSON: custom robots.txt rules { ua, type, value }[]
+  robotsBoostImages Boolean @default(false) // adds Allow rules for product images
   updatedAt       DateTime @updatedAt
 }
 
