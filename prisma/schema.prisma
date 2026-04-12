@@ -140,13 +140,18 @@ model Redirect {
 }
 
 model BrokenLink {
-  id        String   @id @default(cuid())
-  sourceUrl String
-  targetUrl String
-  status    Int
-  foundAt   DateTime @default(now())
+  id               String   @id @default(cuid())
+  sourceUrl        String
+  targetUrl        String
+  status           Int
+  foundAt          DateTime @default(now())
+  kind             String   @default("link") // link | image
+  sourceType       String?  // product | collection | article | page
+  sourceResourceId String?
+  sourceTitle      String?
 
   @@index([targetUrl])
+  @@index([sourceType])
 }
 
 model SkipPage {
