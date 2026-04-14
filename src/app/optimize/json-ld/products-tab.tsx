@@ -14,6 +14,7 @@ import {
   type ConflictReport,
 } from "./actions";
 import type { ProductsJsonLdConfig } from "@/lib/json-ld-config";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 
 export function ProductsTab({
   initial,
@@ -29,6 +30,7 @@ export function ProductsTab({
   const [debugPickerOpen, setDebugPickerOpen] = useState(false);
   const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
   const [previewJson, setPreviewJson] = useState<string | null>(null);
+  const [applyingAll, setApplyingAll] = useState(false);
 
   function runJudgeMeDebug(id: string) {
     setDebugReport(null);
@@ -69,9 +71,11 @@ export function ProductsTab({
     )
       return;
     setMsg(null);
+    setApplyingAll(true);
     start(async () => {
       const r = await applyProductSchemaToAll();
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+      setApplyingAll(false);
     });
   }
 
@@ -502,6 +506,8 @@ export function ProductsTab({
           {pending ? "Working…" : "Update all products"}
         </button>
       </div>
+
+      <BulkProgressBar kind="json_ld_products" active={applyingAll} />
 
       {/* Persistent result panel — never disappears so we can debug */}
       {msg && (

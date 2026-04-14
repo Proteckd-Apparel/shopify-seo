@@ -30,6 +30,7 @@ export async function debugJudgeMeForResource(
   return debugJudgeMe(resourceId);
 }
 import type { RealReviews } from "@/lib/json-ld-generators";
+import { finishJob, setProgress, startJob } from "@/lib/bulk-job";
 import {
   commentOutSchemas,
   findExistingSchemas,
@@ -179,27 +180,32 @@ export async function applyProductSchemaToOne(
 }
 
 export async function applyProductSchemaToAll(): Promise<ApplyResult> {
+  const cfg = await loadOptimizerConfig();
+  const shop = await getShop();
+  const products = await prisma.resource.findMany({
+    where: {
+      type: "product",
+      status: { in: ["active", "ACTIVE"] },
+    },
+    include: { images: true },
+    take: 5000,
+  });
+  const job = await startJob("json_ld_products", products.length);
   try {
-    const cfg = await loadOptimizerConfig();
-    const shop = await getShop();
-    const products = await prisma.resource.findMany({
-      where: {
-        type: "product",
-        status: { in: ["active", "ACTIVE"] },
-      },
-      include: { images: true },
-      take: 5000,
-    });
     // Pre-fetch Judge.me reviews in parallel (fast) so the per-product loop
     // below doesn't serialize on the network.
-    let reviewMap = new Map<string, Awaited<ReturnType<typeof fetchJudgeMeAggregate>>>();
+    const reviewMap = new Map<
+      string,
+      Awaited<ReturnType<typeof fetchJudgeMeAggregate>>
+    >();
     try {
       const batch = await fetchJudgeMeBatch(products.map((p) => p.id));
       for (const [k, v] of batch) reviewMap.set(k, v);
     } catch {}
     let saved = 0;
     let failed = 0;
-    for (const p of products) {
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
       try {
         const agg = reviewMap.get(p.id);
         const reviews: RealReviews | null = agg
@@ -227,7 +233,9 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
       } catch {
         failed++;
       }
+      await setProgress(job.id, i + 1);
     }
+    await finishJob(job.id, { ok: failed === 0 });
     revalidatePath("/optimize/json-ld");
     return {
       ok: failed === 0,
@@ -237,6 +245,10 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
       failed,
     };
   } catch (e) {
+    await finishJob(job.id, {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed",
+    });
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
   }
 }
@@ -244,17 +256,19 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
 // ---------- Apply: Collections ----------
 
 export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
+  const cfg = await loadOptimizerConfig();
+  const shop = await getShop();
+  const collections = await prisma.resource.findMany({
+    where: { type: "collection" },
+    include: { images: true },
+    take: 5000,
+  });
+  const job = await startJob("json_ld_collections", collections.length);
   try {
-    const cfg = await loadOptimizerConfig();
-    const shop = await getShop();
-    const collections = await prisma.resource.findMany({
-      where: { type: "collection" },
-      include: { images: true },
-      take: 5000,
-    });
     let saved = 0;
     let failed = 0;
-    for (const c of collections) {
+    for (let i = 0; i < collections.length; i++) {
+      const c = collections[i];
       try {
         const schema = generateCollectionSchema(
           c,
@@ -267,7 +281,9 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
       } catch {
         failed++;
       }
+      await setProgress(job.id, i + 1);
     }
+    await finishJob(job.id, { ok: failed === 0 });
     revalidatePath("/optimize/json-ld");
     return {
       ok: failed === 0,
@@ -277,6 +293,10 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
       failed,
     };
   } catch (e) {
+    await finishJob(job.id, {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed",
+    });
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
   }
 }
@@ -350,17 +370,19 @@ export async function previewCollectionSchema(
 // ---------- Apply: Articles ----------
 
 export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
+  const cfg = await loadOptimizerConfig();
+  const shop = await getShop();
+  const articles = await prisma.resource.findMany({
+    where: { type: "article" },
+    include: { images: true },
+    take: 5000,
+  });
+  const job = await startJob("json_ld_articles", articles.length);
   try {
-    const cfg = await loadOptimizerConfig();
-    const shop = await getShop();
-    const articles = await prisma.resource.findMany({
-      where: { type: "article" },
-      include: { images: true },
-      take: 5000,
-    });
     let saved = 0;
     let failed = 0;
-    for (const a of articles) {
+    for (let i = 0; i < articles.length; i++) {
+      const a = articles[i];
       try {
         const article = generateArticleSchema(a, shop);
         const out = cfg.jsonLd.other.breadcrumb
@@ -371,7 +393,9 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
       } catch {
         failed++;
       }
+      await setProgress(job.id, i + 1);
     }
+    await finishJob(job.id, { ok: failed === 0 });
     revalidatePath("/optimize/json-ld");
     return {
       ok: failed === 0,
@@ -381,6 +405,10 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
       failed,
     };
   } catch (e) {
+    await finishJob(job.id, {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed",
+    });
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
   }
 }

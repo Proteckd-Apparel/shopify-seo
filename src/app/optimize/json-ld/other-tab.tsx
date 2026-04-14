@@ -7,6 +7,7 @@ import {
   saveJsonLdConfig,
 } from "./actions";
 import type { OtherJsonLdConfig } from "@/lib/json-ld-config";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 
 const TYPES: Array<{ key: keyof OtherJsonLdConfig; label: string; hint: string }> = [
   { key: "website", label: "WebSite", hint: "Site search action for Google" },
@@ -20,6 +21,7 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
   const [cfg, setCfg] = useState(initial);
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [applyingArticles, setApplyingArticles] = useState(false);
 
   function patch(k: keyof OtherJsonLdConfig, v: boolean) {
     setCfg({ ...cfg, [k]: v });
@@ -56,9 +58,11 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
     )
       return;
     setMsg(null);
+    setApplyingArticles(true);
     start(async () => {
       const r = await applyArticleSchemaToAll();
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+      setApplyingArticles(false);
     });
   }
 
@@ -188,6 +192,8 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
           </span>
         )}
       </div>
+
+      <BulkProgressBar kind="json_ld_articles" active={applyingArticles} />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   searchCollectionsForPicker,
 } from "./actions";
 import type { CollectionsJsonLdConfig } from "@/lib/json-ld-config";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 
 export function CollectionsTab({
   initial,
@@ -23,6 +24,7 @@ export function CollectionsTab({
     Array<{ id: string; title: string; handle: string }>
   >([]);
   const [q, setQ] = useState("");
+  const [applyingAll, setApplyingAll] = useState(false);
 
   function doSearch(value: string) {
     setQ(value);
@@ -63,9 +65,11 @@ export function CollectionsTab({
     )
       return;
     setMsg(null);
+    setApplyingAll(true);
     start(async () => {
       const r = await applyCollectionSchemaToAll();
       setMsg(r.message);
+      setApplyingAll(false);
     });
   }
 
@@ -124,6 +128,8 @@ export function CollectionsTab({
         </button>
         {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
       </div>
+
+      <BulkProgressBar kind="json_ld_collections" active={applyingAll} />
 
       {previewJson && (
         <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3">
