@@ -316,7 +316,7 @@ export async function runScan(
         vendor: p.vendor,
         productType: p.productType,
         tags: p.tags,
-        status: p.status,
+        status: p.status?.toLowerCase() ?? null,
         raw: p,
       });
       await persistImages(p.id, p.images);
