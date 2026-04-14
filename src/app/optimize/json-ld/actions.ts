@@ -183,7 +183,10 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
     const cfg = await loadOptimizerConfig();
     const shop = await getShop();
     const products = await prisma.resource.findMany({
-      where: { type: "product", status: "active" },
+      where: {
+        type: "product",
+        status: { in: ["active", "ACTIVE"] },
+      },
       include: { images: true },
       take: 5000,
     });
