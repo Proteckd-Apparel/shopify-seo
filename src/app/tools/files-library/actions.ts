@@ -63,10 +63,9 @@ export type CompressFileSettings = {
   maxWidth: number; // 1500-3000
 };
 
-export const DEFAULT_FILE_COMPRESS_SETTINGS: CompressFileSettings = {
-  quality: 80,
-  maxWidth: 2400,
-};
+// Default lives in the client UI (../compress-ui.tsx). This file is
+// `"use server"` which in Next 16 forbids non-async-function exports, so we
+// can't export an object constant from here.
 
 // Compress a single Files-library image, re-encoding in the same format so
 // references (if any) that rely on the extension don't break. We don't touch
@@ -75,7 +74,7 @@ export async function compressOneFile(
   fileId: string,
   url: string,
   filename: string,
-  settings: CompressFileSettings = DEFAULT_FILE_COMPRESS_SETTINGS,
+  settings: CompressFileSettings = { quality: 80, maxWidth: 2400 },
 ): Promise<CompressFileResult> {
   try {
     const ext = extFromFilename(filename);
@@ -166,7 +165,7 @@ export async function compressOneFile(
 // 50 per invocation so a single run can't run away — user can click again
 // for another batch.
 export async function compressAllFiles(
-  settings: CompressFileSettings = DEFAULT_FILE_COMPRESS_SETTINGS,
+  settings: CompressFileSettings = { quality: 80, maxWidth: 2400 },
 ): Promise<{
   ok: boolean;
   message: string;

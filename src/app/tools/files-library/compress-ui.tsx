@@ -5,11 +5,15 @@ import { Zap, FileImage } from "lucide-react";
 import {
   compressAllFiles,
   compressOneFile,
-  DEFAULT_FILE_COMPRESS_SETTINGS,
   type CompressFileResult,
   type CompressFileSettings,
 } from "./actions";
 import type { ImageFileRow } from "@/lib/shopify-files";
+
+const DEFAULT_FILE_COMPRESS_SETTINGS: CompressFileSettings = {
+  quality: 80,
+  maxWidth: 2400,
+};
 
 function fmtBytes(n: number): string {
   if (!n) return "—";
