@@ -345,6 +345,12 @@ export const NAV: NavSection[] = [
         icon: Lock,
       },
       {
+        slug: "files-library",
+        title: "Compress Files Library",
+        description: "Re-compress images in Shopify Content → Files.",
+        icon: Files,
+      },
+      {
         slug: "image-editor",
         title: "Image Editor (Files)",
         description: "Edit images stored in Shopify Files.",

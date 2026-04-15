@@ -133,7 +133,7 @@ async function downloadImage(
 
 // Stage + upload bytes to Shopify, returns the resource URL we then pass to
 // fileCreate.
-async function stageBytes(
+export async function stageBytes(
   bytes: Buffer,
   filename: string,
   contentType: string,
@@ -206,7 +206,7 @@ async function createFileFromStaged(
   return { id: file.id };
 }
 
-async function pollFileReady(
+export async function pollFileReady(
   fileId: string,
   attempts = 30,
   delayMs = 1500,
