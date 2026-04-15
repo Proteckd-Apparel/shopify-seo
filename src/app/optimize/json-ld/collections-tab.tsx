@@ -129,7 +129,7 @@ export function CollectionsTab({
         {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
       </div>
 
-      <BulkProgressBar kind="json_ld_collections" active={applyingAll} />
+      <BulkProgressBar kind="json_ld_collections" />
 
       {previewJson && (
         <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3">

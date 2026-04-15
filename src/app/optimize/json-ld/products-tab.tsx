@@ -507,7 +507,7 @@ export function ProductsTab({
         </button>
       </div>
 
-      <BulkProgressBar kind="json_ld_products" active={applyingAll} />
+      <BulkProgressBar kind="json_ld_products" />
 
       {/* Persistent result panel — never disappears so we can debug */}
       {msg && (

@@ -193,7 +193,7 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
         )}
       </div>
 
-      <BulkProgressBar kind="json_ld_articles" active={applyingArticles} />
+      <BulkProgressBar kind="json_ld_articles" />
     </div>
   );
 }
