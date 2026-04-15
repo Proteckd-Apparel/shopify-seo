@@ -10,7 +10,8 @@ export type JobKind =
   | "json_ld_products"
   | "json_ld_collections"
   | "json_ld_articles"
-  | "json_ld_sitewide";
+  | "json_ld_sitewide"
+  | "scan";
 
 export async function startJob(kind: JobKind, total: number) {
   return prisma.jobRun.create({
@@ -28,6 +29,16 @@ export async function setProgress(id: string, progress: number) {
   await prisma.jobRun.update({
     where: { id },
     data: { progress },
+  });
+}
+
+// Bump the total partway through a job. Used by scans where pages/articles
+// counts aren't known up front — we start with just products + collections
+// and inflate as we discover the rest.
+export async function setTotal(id: string, total: number) {
+  await prisma.jobRun.update({
+    where: { id },
+    data: { total },
   });
 }
 

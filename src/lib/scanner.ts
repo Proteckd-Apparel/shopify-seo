@@ -16,7 +16,33 @@ import {
   type ShopifyPage,
   type ShopifyProduct,
 } from "./shopify-fetch";
-import { getShopifyCreds, shopInfo } from "./shopify";
+import { getShopifyCreds, shopifyGraphQL, shopInfo } from "./shopify";
+import { setProgress, setTotal } from "./bulk-job";
+
+// Fast upfront count for products + collections. Used by the scan progress
+// bar so the bar has a real denominator from the first poll. Pages and
+// articles aren't GraphQL-countable in the Admin API so they get bumped into
+// the total as each phase starts.
+async function countProductsAndCollections(): Promise<number> {
+  try {
+    const data = await shopifyGraphQL<{
+      productsCount: { count: number } | null;
+      collectionsCount: { count: number } | null;
+    }>(
+      /* GraphQL */ `
+        query ScanCounts {
+          productsCount { count }
+          collectionsCount { count }
+        }
+      `,
+    );
+    const p = data.productsCount?.count ?? 0;
+    const c = data.collectionsCount?.count ?? 0;
+    return p + c;
+  } catch {
+    return 0;
+  }
+}
 
 type IssueDraft = {
   resourceId: string | null;
@@ -173,6 +199,7 @@ export type ScanResult = {
 
 export async function runScan(
   onProgress?: (p: ScanProgress) => void,
+  jobId?: string,
 ): Promise<ScanResult> {
   // Validate credentials up front so we fail fast.
   const creds = await getShopifyCreds();
@@ -182,6 +209,14 @@ export async function runScan(
     );
   await shopInfo(creds); // throws on bad token
 
+  // Seed the progress bar with a real denominator before the first poll.
+  // Pages and articles get added to the total as those phases begin.
+  let jobTotal = 0;
+  if (jobId) {
+    jobTotal = await countProductsAndCollections();
+    if (jobTotal > 0) await setTotal(jobId, jobTotal);
+  }
+
   const scan = await prisma.scanRun.create({
     data: { status: "running" },
   });
@@ -189,6 +224,16 @@ export async function runScan(
   let totalPages = 0;
   let totalIssues = 0;
   const log: string[] = [];
+
+  async function reportProgress() {
+    if (!jobId) return;
+    try {
+      await setProgress(jobId, totalPages);
+    } catch {
+      // Progress updates are best-effort — a failure here shouldn't abort
+      // the whole scan.
+    }
+  }
 
   function pushLog(line: string) {
     log.push(`[${new Date().toISOString()}] ${line}`);
@@ -331,6 +376,7 @@ export async function runScan(
       totalPages++;
     }
     onProgress?.({ phase: "products", totalPages, totalIssues });
+    await reportProgress();
   }
   });
 
@@ -364,6 +410,7 @@ export async function runScan(
       totalPages++;
     }
     onProgress?.({ phase: "collections", totalPages, totalIssues });
+    await reportProgress();
   }
   });
 
@@ -393,8 +440,15 @@ export async function runScan(
       ];
       await persistIssues(issues);
       totalPages++;
+      // Pages weren't counted upfront; expand the total as we discover them
+      // so the bar stays sensible.
+      if (jobId && totalPages > jobTotal) {
+        jobTotal = totalPages;
+        await setTotal(jobId, jobTotal);
+      }
     }
     onProgress?.({ phase: "pages", totalPages, totalIssues });
+    await reportProgress();
   }
   });
 
@@ -425,8 +479,13 @@ export async function runScan(
       ];
       await persistIssues(issues);
       totalPages++;
+      if (jobId && totalPages > jobTotal) {
+        jobTotal = totalPages;
+        await setTotal(jobId, jobTotal);
+      }
     }
     onProgress?.({ phase: "articles", totalPages, totalIssues });
+    await reportProgress();
   }
   });
 
