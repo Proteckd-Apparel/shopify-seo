@@ -27,22 +27,44 @@ export function BulkProgressBar({
   const [snap, setSnap] = useState<Snapshot | null>(null);
 
   useEffect(() => {
-    if (!active) return;
     let cancelled = false;
     async function tick() {
       const row = await pollJob(kind);
       if (cancelled) return;
       setSnap(row);
     }
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-    };
+    if (active) {
+      // New run just started — clear any stale snapshot from the previous run
+      // so the bar resets to 0% instead of showing last run's "Done".
+      setSnap(null);
+      tick();
+      const iv = setInterval(tick, 1000);
+      return () => {
+        cancelled = true;
+        clearInterval(iv);
+      };
+    } else {
+      // Run just finished — do one last poll to capture the terminal state
+      // (handles fast jobs that complete between two polling ticks).
+      tick();
+      return () => {
+        cancelled = true;
+      };
+    }
   }, [kind, active]);
 
-  if (!snap || !active) return null;
+  // Show a placeholder the instant the button is clicked so fast jobs aren't
+  // invisible. Hide only when both active is false AND we have no snapshot.
+  if (!snap) {
+    if (active) {
+      return (
+        <div className="bg-white border border-slate-200 rounded-lg p-3 mt-3 text-xs text-slate-500">
+          Starting…
+        </div>
+      );
+    }
+    return null;
+  }
 
   const pct = snap.total > 0 ? Math.round((snap.progress / snap.total) * 100) : 0;
   const done = snap.status !== "running";
