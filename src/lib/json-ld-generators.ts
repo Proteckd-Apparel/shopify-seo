@@ -328,6 +328,10 @@ function generateProductSchemaInternal(
           ]
         : undefined,
       offers: offer,
+      // Reviews + aggregateRating belong on Product, not ProductGroup — Google
+      // rejects ProductGroup as a parent for the review snippet feature.
+      aggregateRating,
+      review: reviewArray,
     };
 
     return prune(variantObj);
@@ -350,7 +354,6 @@ function generateProductSchemaInternal(
         }
       : { "@type": "PeopleAudience" },
     aggregateRating,
-    review: reviewArray,
     variesBy: variesByForOptions(raw.options),
     hasVariant: hasVariant.length > 0 ? hasVariant : undefined,
   };
@@ -399,6 +402,12 @@ export function generateCollectionSchema(
   withBreadcrumb = false,
 ): Record<string, unknown> | unknown[] {
   const url = `https://${shop.domain}/collections/${resource.handle}`;
+  // NOTE: aggregateRating is intentionally NOT emitted on CollectionPage.
+  // Google's Review snippet feature rejects CollectionPage as a valid parent
+  // type, which produces a "Invalid object type for field <parent_node>"
+  // warning in Search Console. The cfg.showStarRating toggle is kept for
+  // backwards compat but has no effect here.
+  void cfg.showStarRating;
   const schema: Record<string, unknown> = {
     "@context": "https://schema.org/",
     "@type": "CollectionPage",
@@ -407,15 +416,6 @@ export function generateCollectionSchema(
     url,
     image: resource.images.map((i) => i.src.split("?")[0]),
   };
-  if (cfg.showStarRating) {
-    schema.aggregateRating = {
-      "@type": "AggregateRating",
-      ratingValue: 4.7,
-      reviewCount: 25,
-      bestRating: 5,
-      worstRating: 1,
-    };
-  }
   const pruned = prune(schema);
   if (withBreadcrumb) {
     return [pruned, buildBreadcrumbForResource(resource, shop)];
