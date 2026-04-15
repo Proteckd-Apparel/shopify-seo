@@ -58,6 +58,16 @@ export type CompressFileResult = {
   oldDeleted?: boolean;
 };
 
+export type CompressFileSettings = {
+  quality: number; // 50-95
+  maxWidth: number; // 1500-3000
+};
+
+export const DEFAULT_FILE_COMPRESS_SETTINGS: CompressFileSettings = {
+  quality: 80,
+  maxWidth: 2400,
+};
+
 // Compress a single Files-library image, re-encoding in the same format so
 // references (if any) that rely on the extension don't break. We don't touch
 // SVGs, animated images, or files under 4KB.
@@ -65,6 +75,7 @@ export async function compressOneFile(
   fileId: string,
   url: string,
   filename: string,
+  settings: CompressFileSettings = DEFAULT_FILE_COMPRESS_SETTINGS,
 ): Promise<CompressFileResult> {
   try {
     const ext = extFromFilename(filename);
@@ -87,21 +98,30 @@ export async function compressOneFile(
     }
 
     let pipeline = sharp(input).rotate();
-    if (meta.width && meta.width > 2400) {
-      pipeline = pipeline.resize({ width: 2400, withoutEnlargement: true });
+    if (meta.width && meta.width > settings.maxWidth) {
+      pipeline = pipeline.resize({
+        width: settings.maxWidth,
+        withoutEnlargement: true,
+      });
     }
 
     let out: Buffer;
     if (ext === "png") {
       out = await pipeline
-        .png({ compressionLevel: 9, palette: true, quality: 80 })
+        .png({
+          compressionLevel: 9,
+          palette: true,
+          quality: settings.quality,
+        })
         .toBuffer();
     } else if (ext === "webp") {
-      out = await pipeline.webp({ quality: 80 }).toBuffer();
+      out = await pipeline.webp({ quality: settings.quality }).toBuffer();
     } else if (ext === "gif") {
       out = await pipeline.gif().toBuffer();
     } else {
-      out = await pipeline.jpeg({ quality: 80, mozjpeg: true }).toBuffer();
+      out = await pipeline
+        .jpeg({ quality: settings.quality, mozjpeg: true })
+        .toBuffer();
     }
 
     if (out.length >= before) {
@@ -145,7 +165,9 @@ export async function compressOneFile(
 // Bulk compress every image in the Files library, biggest first. Capped at
 // 50 per invocation so a single run can't run away — user can click again
 // for another batch.
-export async function compressAllFiles(): Promise<{
+export async function compressAllFiles(
+  settings: CompressFileSettings = DEFAULT_FILE_COMPRESS_SETTINGS,
+): Promise<{
   ok: boolean;
   message: string;
   results: CompressFileResult[];
@@ -168,7 +190,7 @@ export async function compressAllFiles(): Promise<{
 
   for (const row of list.rows) {
     if (processed >= cap) break;
-    const r = await compressOneFile(row.id, row.url, row.filename);
+    const r = await compressOneFile(row.id, row.url, row.filename, settings);
     results.push(r);
     if (r.ok && r.saved) totalSaved += r.saved;
     processed++;

@@ -5,7 +5,9 @@ import { Zap, FileImage } from "lucide-react";
 import {
   compressAllFiles,
   compressOneFile,
+  DEFAULT_FILE_COMPRESS_SETTINGS,
   type CompressFileResult,
+  type CompressFileSettings,
 } from "./actions";
 import type { ImageFileRow } from "@/lib/shopify-files";
 
@@ -23,20 +25,27 @@ export function FilesLibraryUI({ initial }: { initial: ImageFileRow[] }) {
   );
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
+  const [settings, setSettings] = useState<CompressFileSettings>(
+    DEFAULT_FILE_COMPRESS_SETTINGS,
+  );
 
   const totalBytes = rows.reduce((s, r) => s + r.size, 0);
+
+  function patch(p: Partial<CompressFileSettings>) {
+    setSettings({ ...settings, ...p });
+  }
 
   function runAll() {
     if (
       !confirm(
-        `Compress ${Math.min(rows.length, 50)} image files from your Shopify Files library? Each one is re-encoded in the same format and uploaded as a new file; the old copy is deleted only if nothing references it. Capped at 50 per run.`,
+        `Compress ${Math.min(rows.length, 50)} image files at quality ${settings.quality}, max ${settings.maxWidth}px wide? Each one is re-encoded in the same format and uploaded as a new file; the old copy is deleted only if nothing references it. Capped at 50 per run.`,
       )
     )
       return;
     setMsg(null);
     setResults({});
     start(async () => {
-      const r = await compressAllFiles();
+      const r = await compressAllFiles(settings);
       const map: Record<string, CompressFileResult> = {};
       for (const x of r.results) map[x.fileId] = x;
       setResults(map);
@@ -47,7 +56,7 @@ export function FilesLibraryUI({ initial }: { initial: ImageFileRow[] }) {
   function runOne(row: ImageFileRow) {
     setMsg(null);
     start(async () => {
-      const r = await compressOneFile(row.id, row.url, row.filename);
+      const r = await compressOneFile(row.id, row.url, row.filename, settings);
       setResults((prev) => ({ ...prev, [row.id]: r }));
       setMsg(`${row.filename}: ${r.message}`);
     });
@@ -62,6 +71,60 @@ export function FilesLibraryUI({ initial }: { initial: ImageFileRow[] }) {
         filename extensions stay the same, but the file gets a new CDN url —
         any old hardcoded references to the exact old url will break. The
         old copy is deleted only when Shopify confirms nothing references it.
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg">
+        <div className="px-5 py-3 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-600 font-semibold">
+          Settings
+        </div>
+        <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="block">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-700 mb-1">
+              <span>Quality</span>
+              <span className="font-mono text-slate-500">
+                {settings.quality}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={50}
+              max={95}
+              value={settings.quality}
+              onChange={(e) =>
+                patch({ quality: parseInt(e.target.value, 10) })
+              }
+              disabled={pending}
+              className="w-full"
+            />
+            <div className="text-[10px] text-slate-500 mt-1">
+              80 = default (no visible loss), 70 = aggressive, 60 = visible
+              artifacts on gradients / skin tones.
+            </div>
+          </label>
+          <label className="block">
+            <div className="text-xs font-medium text-slate-700 mb-1">
+              Max width
+            </div>
+            <select
+              value={settings.maxWidth}
+              onChange={(e) =>
+                patch({ maxWidth: parseInt(e.target.value, 10) })
+              }
+              disabled={pending}
+              className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded bg-white"
+            >
+              <option value={1500}>1500px</option>
+              <option value={2000}>2000px</option>
+              <option value={2400}>2400px (default)</option>
+              <option value={3000}>3000px</option>
+              <option value={4000}>4000px (essentially no resize)</option>
+            </select>
+            <div className="text-[10px] text-slate-500 mt-1">
+              Anything wider than this is resized down; narrower images are
+              left alone.
+            </div>
+          </label>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg">
