@@ -95,7 +95,7 @@ export default async function ChecklistPage() {
         imagesMissingAlt === 0
           ? "All set"
           : `${imagesMissingAlt} images missing alt`,
-      link: "/optimize/alt-texts",
+      link: "/optimize/alt-texts?mode=inline&filter=missing",
     },
     {
       label: "No low-resolution images",
