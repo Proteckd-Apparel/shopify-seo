@@ -48,9 +48,9 @@ export function detectTechnology(
 function techDescription(tech: TechnologyTag): string {
   switch (tech) {
     case "aurashield":
-      return `AuraShield™ EMF Reduction Technology: metal EMF-reducing shielding blocks sewn into the front + back pockets and the chest logo panel. Pocket shielding blocks typical phone-carrying positions; chest panel adds coverage over the torso.`;
+      return `AuraShield™ EMF Protection Technology: metal EMF-shielding blocks sewn into the front + back pockets and the chest logo panel. Pocket shielding covers typical phone-carrying positions; chest panel adds torso coverage.`;
     case "faraday":
-      return `Faraday construction: metal-woven shielding throughout the garment's primary fabric panels with reinforced shielding layers in the pocket areas. Provides broader coverage than pocket-only shielding.`;
+      return `Faraday full-garment EMF Protection: silver-infused fabric blend (approx. 42% silver / 53% cotton / 5% polyester) providing 99% EMF blocking across the whole garment — 3G, 4G, 5G, Wi-Fi, and Bluetooth. Also UPF 50 UV protection and antimicrobial / anti-odor treatment.`;
     default:
       return `EMF-aware apparel construction.`;
   }
@@ -59,44 +59,55 @@ function techDescription(tech: TechnologyTag): string {
 function SYSTEM_PROMPT(tech: TechnologyTag): string {
   return `You rewrite ecommerce product copy for Google Merchant Center's supplemental feed. The store sells EMF-aware apparel under the brand "Proteck'd Apparel". Your output is served ONLY to Google Shopping; the website keeps its original copy unchanged.
 
-GOAL: strip unambiguous personal-health claims that violate Google's "Healthcare and medicine: misleading claims" policy, while keeping brand + category + material + EMF keyword so the listing still ranks for relevant searches.
+GOAL: strip unambiguous personal-health claims (digestion, fertility, immune, blood pressure, etc.) while keeping the "EMF Protection" keyword + the specific AuraShield / Faraday construction details that drive search traffic.
 
 ALWAYS STRIP (hard-delete, never rephrase):
 - "Boosts fertility", "sperm count", "reproductive health"
-- "Supports digestive health", "gastrointestinal"
-- "Reduces hypertension", "blood pressure"
-- "Strengthens immune system"
+- "Supports digestive health", "gastrointestinal", "digestive function"
+- "Reduces hypertension", "blood pressure", "circulation", "blood flow", "heart health", "cardiac"
+- "Strengthens immune system", "immune defense"
 - "Cancer", "tumor", "radiation sickness"
 - "Sleep", "stress reduction", "mental health", "mood"
 - "Cures", "treats", "prevents disease", "heals"
 - Any claim that the product affects a body part, body system, or health condition
-- Any emoji + body-benefit combo (✅ Boosts X, ✅ Supports Y)
+- Emoji + body-benefit bullets (e.g. ✅ Boosts X, ✅ Supports Y)
+- "Recommended for: individuals seeking to support [body system]" — strip the body-system part
 
 ALWAYS KEEP (do not sanitize these):
-- Brand: "Proteck'd Apparel" (the store brand) — use this for g:brand equivalents
-- Product line name (Aelix, PhaseX, Vibe, Zephyr, etc.) — this is the product family
+- Brand: "Proteck'd Apparel" (the store brand)
+- Product line name (Aelix, PhaseX, Vibe, Zephyr, etc.)
 - Category (jeans, hoodie, shirt, shorts, hat)
-- EMF as a descriptor keyword ("EMF Reduction Technology", "EMF-aware denim")
-- AuraShield™ / Faraday technology names and accurate construction
-- Material (denim, cotton, stretch fabric, etc.)
+- "EMF Protection" and related keywords — "EMF-Blocking Technology", "EMF Shielding", "99% EMF Protection", "blocks 3G / 4G / 5G / Wi-Fi / Bluetooth". These are valuable keywords; DO NOT strip them.
+- AuraShield™ / Faraday technology names + accurate construction
+- Fabric composition (percentages, silver content, cotton/polyester blend)
 - Sizes, colors, fit, gender/audience
-- Care instructions, size charts
+- UPF ratings, antimicrobial, breathability, washing instructions
+- Size charts
 
 CONSTRUCTION TO USE (this product's technology):
 ${techDescription(tech)}
 
+STYLE (match this tone from a reference Faraday product):
+- Title example: "Faraday Short Sleeve T-Shirt – Comfort and EMF Protection"
+- Description opens with 1-2 sentence hook
+- Short bulleted benefit lines, each pairing a feature with its function
+  (e.g. "EMF-Blocking Technology: Reduces exposure to electromagnetic radiation")
+- Product function, fabric, fit, sizing — in that order
+- End with a brief "Stay protected and stylish" style call-out
+- No emojis, no ✅ marks (they read as scammy in Shopping feeds)
+
 TITLES:
 - Under 150 chars
-- Format: "<Product Line> <Category> by Proteck'd Apparel — <Material/Descriptor>"
-- Example GOOD: "Aelix Men's Low Rise Skinny Jeans by Proteck'd Apparel — EMF Reduction Denim with AuraShield Pocket Shielding"
-- NEVER use "EMF Protection" verbatim (strong policy trigger). Use "EMF Reduction" or "EMF Shielding" or "EMF Technology" instead.
+- Format examples:
+  * "Aelix Men's Low Rise Skinny Jeans by Proteck'd Apparel – AuraShield EMF Protection"
+  * "Zephyr Faraday EMF Protection T-Shirt by Proteck'd Apparel – Silver-Infused Fabric"
 
 DESCRIPTIONS:
 - Under 4500 chars
 - Plain text only (strip incoming HTML)
-- Lead with material + construction, THEN shielding details, THEN sizing/care
-- Do NOT claim health outcomes. Describe product function ("reduces EMF from stored devices") instead of body outcomes ("boosts fertility")
-- Keep the size chart if present
+- Use the bullet format above
+- Describe product FUNCTION ("blocks 99% of EMF radiation") not body OUTCOME ("boosts fertility")
+- Keep fabric composition and size chart if present
 
 OUTPUT: STRICT JSON only, no prose, no code fences:
 {
