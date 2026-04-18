@@ -150,12 +150,42 @@ function parseMerchantCopy(raw: string | null | undefined): StoredMerchantCopy |
   return null;
 }
 
-function variantLink(product: ProductNode, variant: Variant, shopDomain: string): string {
-  const base = product.onlineStoreUrl || `https://${shopDomain}/products/${product.handle}`;
+function variantLink(product: ProductNode, variant: Variant): string {
+  // Caller has already ensured product.onlineStoreUrl is non-null — products
+  // without an online-store URL are skipped in the main loop because their
+  // landing pages don't exist on the public domain and would trigger
+  // Merchant Center's "Mismatched domains" rejection.
+  const base = product.onlineStoreUrl as string;
   const variantNum = numericId(variant.id);
   // Shopify's ?variant= query param selects the variant on the PDP so Google
   // lands the customer on the exact SKU they clicked.
   return product.variants.nodes.length > 1 ? `${base}?variant=${variantNum}` : base;
+}
+
+// Infer Google Merchant gender from Shopify product metadata. Falls back to
+// "unisex" so every apparel item has a value set — Google soft-warns on
+// missing gender and reduces visibility in Shopping without it.
+function inferGender(product: ProductNode): string {
+  if (product.googleGender?.value?.trim()) return product.googleGender.value.trim();
+  const tags = product.tags.map((t) => t.toLowerCase());
+  const type = (product.productType ?? "").toLowerCase();
+  const hay = `${tags.join(" ")} ${type}`;
+  if (/\b(men'?s|mens|male)\b/.test(hay)) return "male";
+  if (/\b(women'?s|womens|female|ladies)\b/.test(hay)) return "female";
+  return "unisex";
+}
+
+// age_group is required on apparel. Adult is the right default for an adult
+// EMF apparel brand — we override only if a product is explicitly tagged
+// for infant/toddler/kids.
+function inferAgeGroup(product: ProductNode): string {
+  if (product.googleAgeGroup?.value?.trim()) return product.googleAgeGroup.value.trim();
+  const hay = product.tags.map((t) => t.toLowerCase()).join(" ");
+  if (/\b(newborn)\b/.test(hay)) return "newborn";
+  if (/\b(infant)\b/.test(hay)) return "infant";
+  if (/\b(toddler)\b/.test(hay)) return "toddler";
+  if (/\b(kids?|youth)\b/.test(hay)) return "kids";
+  return "adult";
 }
 
 function findOption(variant: Variant, name: string): string | null {
@@ -163,11 +193,11 @@ function findOption(variant: Variant, name: string): string | null {
   return hit?.value?.trim() || null;
 }
 
-function emitItem(product: ProductNode, variant: Variant, shopDomain: string): string {
+function emitItem(product: ProductNode, variant: Variant): string {
   const override = parseMerchantCopy(product.merchantCopy?.value);
   const title = buildTitle(product, override, variant);
   const description = buildDescription(product, override);
-  const link = variantLink(product, variant, shopDomain);
+  const link = variantLink(product, variant);
 
   const feedId = `shopify_${COUNTRY}_${numericId(product.id)}_${numericId(variant.id)}`;
   const imageUrl = variant.image?.url || product.featuredImage?.url || product.images.nodes[0]?.url || "";
@@ -211,12 +241,11 @@ function emitItem(product: ProductNode, variant: Variant, shopDomain: string): s
   if (product.googleCategory?.value) {
     parts.push(`      <g:google_product_category>${xmlEscape(product.googleCategory.value)}</g:google_product_category>`);
   }
-  if (product.googleGender?.value) {
-    parts.push(`      <g:gender>${xmlEscape(product.googleGender.value)}</g:gender>`);
-  }
-  if (product.googleAgeGroup?.value) {
-    parts.push(`      <g:age_group>${xmlEscape(product.googleAgeGroup.value)}</g:age_group>`);
-  }
+  // gender + age_group: ALWAYS emit so Merchant Center doesn't flag soft
+  // "missing attribute" warnings. Values prefer the product's mm-google-shopping
+  // metafield, fall back to tag/type inference (see inferGender / inferAgeGroup).
+  parts.push(`      <g:gender>${xmlEscape(inferGender(product))}</g:gender>`);
+  parts.push(`      <g:age_group>${xmlEscape(inferAgeGroup(product))}</g:age_group>`);
   if (color) parts.push(`      <g:color>${xmlEscape(color)}</g:color>`);
   if (size) parts.push(`      <g:size>${xmlEscape(size)}</g:size>`);
   // Group variants of the same product so Google shows them as options.
@@ -236,11 +265,15 @@ function emitItem(product: ProductNode, variant: Variant, shopDomain: string): s
 
 export async function GET() {
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-  const shopDomain = settings?.shopDomain ?? "proteckd.com";
+  // Channel-level <link> uses the public customer-facing domain, not the
+  // myshopify domain. If we emit myshopify.com here while item <g:link>s
+  // point to www.proteckd.com, Merchant Center flags the mismatch.
+  const publicDomain = "www.proteckd.com";
 
   const items: string[] = [];
   let cursor: string | null = null;
   let productCount = 0;
+  let skippedUnpublished = 0;
 
   while (true) {
     const data: {
@@ -252,10 +285,20 @@ export async function GET() {
 
     for (const product of data.products.nodes) {
       productCount++;
+      // Skip products not published to the Online Store sales channel —
+      // onlineStoreUrl is null for those, and emitting a myshopify.com fallback
+      // URL triggers "Mismatched domains" in Merchant Center (Google verifies
+      // against the custom domain www.proteckd.com, not the myshopify one).
+      // Products that aren't live on the storefront shouldn't be in a Shopping
+      // feed anyway — the landing page literally doesn't exist there.
+      if (!product.onlineStoreUrl) {
+        skippedUnpublished++;
+        continue;
+      }
       const variants = product.variants.nodes;
       if (variants.length === 0) continue;
       for (const variant of variants) {
-        items.push(emitItem(product, variant, shopDomain));
+        items.push(emitItem(product, variant));
       }
     }
 
@@ -263,12 +306,17 @@ export async function GET() {
     cursor = data.products.pageInfo.endCursor;
   }
 
+  // Suppress the unused-var warning while keeping the value in scope for the
+  // description tag below — it's useful diagnostic info when the feed shrinks
+  // after a cutover.
+  void settings;
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
   <channel>
     <title>Proteck'd Apparel — Google Merchant Primary Feed</title>
-    <link>https://${xmlEscape(shopDomain)}</link>
-    <description>Full primary feed with health-claim-safe titles + descriptions for products that have merchant copy generated. ${productCount} products, ${items.length} variants.</description>
+    <link>https://${xmlEscape(publicDomain)}</link>
+    <description>Full primary feed with health-claim-safe titles + descriptions for products that have merchant copy generated. ${productCount} products total, ${skippedUnpublished} skipped (not published to Online Store), ${items.length} variants emitted.</description>
 ${items.join("\n")}
   </channel>
 </rss>`;
