@@ -36,6 +36,7 @@ import {
   Rocket,
   Search,
   Settings as SettingsIcon,
+  Shield,
   ShoppingBag,
   Sparkles,
   Tag,
@@ -262,6 +263,13 @@ export const NAV: NavSection[] = [
         title: "Google Shopping",
         description: "Generate a Google Merchant feed.",
         icon: ShoppingBag,
+      },
+      {
+        slug: "merchant-copy",
+        title: "Merchant Copy",
+        description:
+          "Google-safe product titles + descriptions without changing your website.",
+        icon: Shield,
       },
       {
         slug: "json-ld-faq",
