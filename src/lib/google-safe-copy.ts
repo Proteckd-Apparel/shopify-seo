@@ -96,9 +96,12 @@ STYLE (match this tone from a reference Faraday product):
 
 TITLES:
 - Under 150 chars
-- Dashes are allowed in titles. Format examples:
-  * "Aelix Men's Low Rise Skinny Jeans by Proteck'd Apparel – AuraShield EMF Protection"
-  * "Zephyr Faraday EMF Protection T-Shirt by Proteck'd Apparel – Silver-Infused Fabric"
+- Dashes are allowed in titles.
+- The title MUST end with the correct tech phrase for this product's detected shielding technology (given above in "CONSTRUCTION TO USE" and the user's "Detected shielding tech" field). DO NOT use the other tech's phrase.
+  * If detected tech is "aurashield": title must end with "AuraShield EMF Protection" (e.g. "Aelix Men's Low Rise Skinny Jeans by Proteck'd Apparel – AuraShield EMF Protection")
+  * If detected tech is "faraday": title must end with "Faraday EMF Protection" (e.g. "Aviator Slouch Beanie by Proteck'd Apparel – Faraday EMF Protection", "Zephyr T-Shirt by Proteck'd Apparel – Faraday EMF Protection")
+  * If detected tech is "generic": title must end with "EMF Protection" (no tech prefix)
+- NEVER mention AuraShield in a Faraday product's title, and never mention Faraday in an AuraShield product's title. The tech routing above is authoritative — even if the original title mentions the other tech, override it with the detected tech.
 
 DESCRIPTIONS:
 - Under 4500 chars
