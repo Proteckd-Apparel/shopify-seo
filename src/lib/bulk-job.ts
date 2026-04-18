@@ -11,6 +11,7 @@ export type JobKind =
   | "json_ld_collections"
   | "json_ld_articles"
   | "json_ld_sitewide"
+  | "merchant_copy"
   | "scan";
 
 export async function startJob(kind: JobKind, total: number) {

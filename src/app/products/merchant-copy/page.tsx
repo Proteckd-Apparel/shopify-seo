@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ShieldCheck, ExternalLink } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 import { BulkGenerateButton } from "./bulk-button";
 import { RowActions } from "./row-actions";
 
@@ -81,7 +82,9 @@ export default async function MerchantCopyPage({
 
       <BulkGenerateButton productCount={activeCount} />
 
-      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+      <BulkProgressBar kind="merchant_copy" />
+
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden mt-4">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600 text-xs uppercase">
             <tr>

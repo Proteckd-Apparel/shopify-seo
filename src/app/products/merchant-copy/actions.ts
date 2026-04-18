@@ -150,7 +150,7 @@ export async function bulkGenerateMerchantCopy(opts: {
       tags: true,
     },
   });
-  const job = await startJob("json_ld_products", products.length);
+  const job = await startJob("merchant_copy", products.length);
   let saved = 0;
   let skipped = 0;
   let failed = 0;
