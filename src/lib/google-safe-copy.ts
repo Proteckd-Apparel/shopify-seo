@@ -1,30 +1,30 @@
-// Rewrite product titles + descriptions to satisfy Google Merchant Center's
-// "Healthcare and medicine: misleading claims" policy without touching the
-// storefront copy. The output is stored in product metafields and served
-// only via a supplemental feed to Merchant Center — the live site keeps
-// the original, brand-voice copy.
+// Rewrite product titles + descriptions for Google Merchant Center.
 //
-// What this strips:
-//   - Claims of preventing, treating, curing, or diagnosing disease
-//   - Claims of "protecting" or "shielding" from radiation / EMF / 5G / WiFi
-//   - Implied health benefits ("for your health," "reduce exposure")
+// Strips the unambiguous personal-health claims that get products blocked
+// (fertility, immune system, sperm count, blood pressure, cancer, sleep,
+// gastrointestinal, etc.) while KEEPING the "EMF" keyword + the specific
+// AuraShield / Faraday construction details that drive search traffic.
 //
-// What this keeps:
-//   - Brand names (Proteck'd, AuraShield, PhaseX, etc.)
-//   - Product category (hoodie, shirt, pants)
-//   - Technical materials ("silver-lined," "conductive mesh," "Faraday")
-//     — Faraday is a legitimate physics/electrical engineering term, not a
-//     health claim
-//   - Size, color, fit, target audience (men's / women's / kids)
-//   - Style descriptors (crewneck, long sleeve, preppy, athletic)
+// Construction details are tag-routed:
+//   - Tag "Aura Shield" → metal EMF-reducing blocks in pockets + chest
+//   - Tag "Faraday"     → metal-woven throughout the fabric, reinforced pockets
+//
+// Tradeoff to know: keeping "EMF" in titles may still trip some Merchant
+// Center flags. Google's policy is fuzzier around "EMF Reduction" (product
+// function) than "EMF Protection" (health claim). If this copy still gets
+// blocked, the next step is trimming more EMF language — accepting the
+// keyword loss in Shopping while keeping it for organic Search.
 
 import { getAnthropic, MODELS } from "./anthropic";
+
+export type TechnologyTag = "aurashield" | "faraday" | "generic";
 
 export type SafeCopyInput = {
   title: string;
   description: string;
   productType?: string | null;
   vendor?: string | null;
+  tags?: string | null; // comma-separated Shopify tags
 };
 
 export type SafeCopyResult = {
@@ -32,53 +32,86 @@ export type SafeCopyResult = {
   description: string;
 };
 
-const SYSTEM_PROMPT = `You rewrite ecommerce product copy to comply with Google Merchant Center's "Healthcare and medicine: misleading claims" policy. Your output is used ONLY in a supplemental feed sent to Google Shopping; the store's actual website copy is not being changed.
+// Detects which shielding tech a product uses. Match is case-sensitive on
+// the Shopify tag value ("Aura Shield" vs "Faraday"), which is how the
+// merchant has chosen to organize the catalog.
+export function detectTechnology(
+  tags: string | null | undefined,
+): TechnologyTag {
+  if (!tags) return "generic";
+  const list = tags.split(",").map((t) => t.trim());
+  if (list.includes("Aura Shield")) return "aurashield";
+  if (list.includes("Faraday")) return "faraday";
+  return "generic";
+}
 
-STRICT RULES:
+function techDescription(tech: TechnologyTag): string {
+  switch (tech) {
+    case "aurashield":
+      return `AuraShield™ EMF Reduction Technology: metal EMF-reducing shielding blocks sewn into the front + back pockets and the chest logo panel. Pocket shielding blocks typical phone-carrying positions; chest panel adds coverage over the torso.`;
+    case "faraday":
+      return `Faraday construction: metal-woven shielding throughout the garment's primary fabric panels with reinforced shielding layers in the pocket areas. Provides broader coverage than pocket-only shielding.`;
+    default:
+      return `EMF-aware apparel construction.`;
+  }
+}
 
-1. Remove ALL language that implies health benefits, protection from harm, or prevention/treatment/cure of any condition. Specific triggers to strip:
-   - "Protect", "protection", "protects you", "protective"
-   - "Shield", "shielding from", "shields your body"
-   - "Block", "blocks radiation", "blocks EMF"
-   - "Prevent", "reduce exposure", "minimize"
-   - "Safe from", "stay safe", "keep you safe"
-   - "Health", "healthy", "for your health", "wellness"
-   - "Radiation-free", "EMF-free", "5G-safe"
-   - Any reference to cancer, tumors, fertility, sleep, stress, immune system
+function SYSTEM_PROMPT(tech: TechnologyTag): string {
+  return `You rewrite ecommerce product copy for Google Merchant Center's supplemental feed. The store sells EMF-aware apparel under the brand "Proteck'd Apparel". Your output is served ONLY to Google Shopping; the website keeps its original copy unchanged.
 
-2. KEEP legitimate product information:
-   - Brand names (Proteck'd, AuraShield, PhaseX, Nova, Zephyr, etc.)
-   - Product category (hoodie, shirt, pants, hat)
-   - Technical materials ("silver-lined", "conductive fabric", "copper-woven", "Faraday")
-     — "Faraday" is a physics term, NOT a health claim — KEEP it
-   - Size, color, fit, target (men's, women's, kids, unisex)
-   - Style (long sleeve, crewneck, fitted, relaxed, preppy)
-   - Thread count, fabric weight, weave type
+GOAL: strip unambiguous personal-health claims that violate Google's "Healthcare and medicine: misleading claims" policy, while keeping brand + category + material + EMF keyword so the listing still ranks for relevant searches.
 
-3. Titles:
-   - MAX 150 characters
-   - Lead with brand + product type + key descriptor
-   - Example transform:
-     BAD:  "PhaseX AuraShield EMF Protection Running Shorts — Blocks Radiation"
-     GOOD: "PhaseX AuraShield Running Shorts — Silver-Lined Athletic Wear"
+ALWAYS STRIP (hard-delete, never rephrase):
+- "Boosts fertility", "sperm count", "reproductive health"
+- "Supports digestive health", "gastrointestinal"
+- "Reduces hypertension", "blood pressure"
+- "Strengthens immune system"
+- "Cancer", "tumor", "radiation sickness"
+- "Sleep", "stress reduction", "mental health", "mood"
+- "Cures", "treats", "prevents disease", "heals"
+- Any claim that the product affects a body part, body system, or health condition
+- Any emoji + body-benefit combo (✅ Boosts X, ✅ Supports Y)
 
-4. Descriptions:
-   - MAX 4500 characters
-   - Plain text only (strip any HTML tags that come in)
-   - Focus on materials, construction, fit, styling, care instructions
-   - Do NOT invent facts
+ALWAYS KEEP (do not sanitize these):
+- Brand: "Proteck'd Apparel" (the store brand) — use this for g:brand equivalents
+- Product line name (Aelix, PhaseX, Vibe, Zephyr, etc.) — this is the product family
+- Category (jeans, hoodie, shirt, shorts, hat)
+- EMF as a descriptor keyword ("EMF Reduction Technology", "EMF-aware denim")
+- AuraShield™ / Faraday technology names and accurate construction
+- Material (denim, cotton, stretch fabric, etc.)
+- Sizes, colors, fit, gender/audience
+- Care instructions, size charts
 
-5. Output STRICT JSON only. No prose, no code fences, no explanation. Schema:
+CONSTRUCTION TO USE (this product's technology):
+${techDescription(tech)}
+
+TITLES:
+- Under 150 chars
+- Format: "<Product Line> <Category> by Proteck'd Apparel — <Material/Descriptor>"
+- Example GOOD: "Aelix Men's Low Rise Skinny Jeans by Proteck'd Apparel — EMF Reduction Denim with AuraShield Pocket Shielding"
+- NEVER use "EMF Protection" verbatim (strong policy trigger). Use "EMF Reduction" or "EMF Shielding" or "EMF Technology" instead.
+
+DESCRIPTIONS:
+- Under 4500 chars
+- Plain text only (strip incoming HTML)
+- Lead with material + construction, THEN shielding details, THEN sizing/care
+- Do NOT claim health outcomes. Describe product function ("reduces EMF from stored devices") instead of body outcomes ("boosts fertility")
+- Keep the size chart if present
+
+OUTPUT: STRICT JSON only, no prose, no code fences:
 {
   "title": "...",
   "description": "..."
 }`;
+}
 
 export async function rewriteForGoogleShopping(
   input: SafeCopyInput,
 ): Promise<SafeCopyResult> {
   const client = await getAnthropic();
   if (!client) throw new Error("Anthropic key not configured (Settings)");
+
+  const tech = detectTechnology(input.tags);
 
   const cleanDesc = (input.description ?? "")
     .replace(/<[^>]+>/g, " ")
@@ -87,13 +120,15 @@ export async function rewriteForGoogleShopping(
     .slice(0, 8000);
 
   const userMsg = `Original title: ${input.title}
+Product line / vendor: ${input.vendor ?? "unknown"}
 Product type: ${input.productType ?? "unknown"}
-Vendor: ${input.vendor ?? "unknown"}
+Shopify tags: ${input.tags ?? ""}
+Detected shielding tech: ${tech}
 
 Original description:
 ${cleanDesc}
 
-Rewrite title + description for Google Merchant Center. Return JSON now.`;
+Rewrite for Google Merchant Center now. Return JSON.`;
 
   const res = await client.messages.create({
     model: MODELS.fast,
@@ -101,7 +136,7 @@ Rewrite title + description for Google Merchant Center. Return JSON now.`;
     system: [
       {
         type: "text",
-        text: SYSTEM_PROMPT,
+        text: SYSTEM_PROMPT(tech),
         cache_control: { type: "ephemeral" },
       },
     ],

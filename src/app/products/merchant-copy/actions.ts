@@ -110,6 +110,7 @@ export async function generateAndSaveForProduct(
       description: body,
       productType: r.productType,
       vendor: r.vendor,
+      tags: r.tags,
     });
     const saved = await saveMerchantCopy(productId, copy);
     if (!saved.ok) return { ok: false, message: saved.message };
@@ -146,6 +147,7 @@ export async function bulkGenerateMerchantCopy(opts: {
       bodyHtml: true,
       productType: true,
       vendor: true,
+      tags: true,
     },
   });
   const job = await startJob("json_ld_products", products.length);
@@ -176,6 +178,7 @@ export async function bulkGenerateMerchantCopy(opts: {
           description: p.bodyHtml ?? "",
           productType: p.productType,
           vendor: p.vendor,
+          tags: p.tags,
         });
         const s = await saveMerchantCopy(p.id, copy);
         if (s.ok) saved++;
