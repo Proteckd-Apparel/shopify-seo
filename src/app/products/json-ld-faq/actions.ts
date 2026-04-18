@@ -13,6 +13,10 @@ import {
   type RealReviews,
 } from "@/lib/json-ld-generators";
 import { fetchJudgeMeAggregate } from "@/lib/judge-me";
+import {
+  buildProductTypeToCollectionMap,
+  resolvePrimaryCollection,
+} from "@/lib/primary-collection";
 import { setJsonLd } from "@/lib/shopify-metafields";
 
 // ---------- Read FAQs from a product's existing metafield ----------
@@ -115,6 +119,11 @@ export async function saveFaqsForProduct(
       }
     } catch {}
 
+    const collectionMap = await buildProductTypeToCollectionMap();
+    const primaryCollection = resolvePrimaryCollection(
+      r.productType,
+      collectionMap,
+    );
     const schema = generateProductSchema(
       r,
       cfg.jsonLd.products,
@@ -122,6 +131,7 @@ export async function saveFaqsForProduct(
       reviews,
       cfg.jsonLd.other.breadcrumb,
       faqs,
+      primaryCollection,
     );
     await setJsonLd(r.id, schema);
 

@@ -99,6 +99,7 @@ export function generateProductSchema(
   reviews?: RealReviews | null,
   withBreadcrumb = false,
   faqs?: FaqItem[] | null,
+  primaryCollection?: { handle: string; title: string } | null,
 ): Record<string, unknown> {
   const arr = generateProductSchemaInternal(
     resource,
@@ -108,7 +109,7 @@ export function generateProductSchema(
   ) as unknown[];
   const out = Array.isArray(arr) ? [...arr] : [arr];
   if (withBreadcrumb) {
-    out.push(buildBreadcrumbForResource(resource, shop));
+    out.push(buildBreadcrumbForResource(resource, shop, primaryCollection));
   }
   if (faqs && faqs.length > 0) {
     out.push(generateFaqSchema(faqs));
@@ -497,18 +498,41 @@ export function generateBreadcrumbSchema(
 }
 
 // Convenience: build a Breadcrumb for any scanned resource. The chain is
-// Home → (Type Index) → Resource. If the resource is a product we also add
-// a "Collections" link as the parent so Google has a consistent path.
+// Home → (Category) → Resource.
+//
+// For products, the middle step is the richest available category:
+//   1. primaryCollection if provided (caller resolves via productType →
+//      collection handle lookup, giving trails like "Men's Shorts" instead
+//      of the generic "Products" link)
+//   2. productType as a text-only middle step when no collection matches
+//      — URL falls back to /collections/all so we don't emit broken links
+//   3. generic "Products" → /products as last resort
+//
+// Google sometimes renders breadcrumbs in search results; a descriptive
+// middle step ("Men's Shorts") reads better than a generic one.
 export function buildBreadcrumbForResource(
   resource: ResourceWithImages,
   shop: { domain: string; name: string },
+  primaryCollection?: { handle: string; title: string } | null,
 ) {
   const home = `https://${shop.domain}`;
   const items: Array<{ name: string; url: string }> = [
     { name: shop.name, url: home },
   ];
   if (resource.type === "product") {
-    items.push({ name: "Products", url: `${home}/products` });
+    if (primaryCollection) {
+      items.push({
+        name: primaryCollection.title,
+        url: `${home}/collections/${primaryCollection.handle}`,
+      });
+    } else if (resource.productType) {
+      items.push({
+        name: resource.productType,
+        url: `${home}/collections/all`,
+      });
+    } else {
+      items.push({ name: "Products", url: `${home}/products` });
+    }
     items.push({
       name: resource.title ?? resource.handle ?? "",
       url: `${home}/products/${resource.handle}`,

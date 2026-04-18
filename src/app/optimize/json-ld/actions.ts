@@ -14,6 +14,10 @@ import {
   buildBreadcrumbForResource,
   siteWideSchemas,
 } from "@/lib/json-ld-generators";
+import {
+  buildProductTypeToCollectionMap,
+  resolvePrimaryCollection,
+} from "@/lib/primary-collection";
 import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
 import type { JsonLdConfig } from "@/lib/json-ld-config";
 import { setJsonLd } from "@/lib/shopify-metafields";
@@ -157,12 +161,19 @@ export async function applyProductSchemaToOne(
         };
       }
     } catch {}
+    const collectionMap = await buildProductTypeToCollectionMap();
+    const primaryCollection = resolvePrimaryCollection(
+      r.productType,
+      collectionMap,
+    );
     const schema = generateProductSchema(
       r,
       cfg.jsonLd.products,
       shop,
       reviews,
       cfg.jsonLd.other.breadcrumb,
+      undefined,
+      primaryCollection,
     );
     await setJsonLd(r.id, schema);
     return {
@@ -202,6 +213,7 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
       const batch = await fetchJudgeMeBatch(products.map((p) => p.id));
       for (const [k, v] of batch) reviewMap.set(k, v);
     } catch {}
+    const collectionMap = await buildProductTypeToCollectionMap();
     let saved = 0;
     let failed = 0;
     for (let i = 0; i < products.length; i++) {
@@ -221,12 +233,18 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
               })),
             }
           : null;
+        const primaryCollection = resolvePrimaryCollection(
+          p.productType,
+          collectionMap,
+        );
         const schema = generateProductSchema(
           p,
           cfg.jsonLd.products,
           shop,
           reviews,
           cfg.jsonLd.other.breadcrumb,
+          undefined,
+          primaryCollection,
         );
         await setJsonLd(p.id, schema);
         saved++;
@@ -331,12 +349,19 @@ export async function previewProductSchema(
         };
       }
     } catch {}
+    const collectionMap = await buildProductTypeToCollectionMap();
+    const primaryCollection = resolvePrimaryCollection(
+      r.productType,
+      collectionMap,
+    );
     const schema = generateProductSchema(
       r,
       cfg.jsonLd.products,
       shop,
       reviews,
       cfg.jsonLd.other.breadcrumb,
+      undefined,
+      primaryCollection,
     );
     return { ok: true, json: JSON.stringify(schema, null, 2) };
   } catch (e) {
