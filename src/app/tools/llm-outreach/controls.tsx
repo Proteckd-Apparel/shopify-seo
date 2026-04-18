@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { PROVIDERS, type Provider } from "@/lib/llm-outreach";
+import { PROVIDERS, type Provider } from "@/lib/llm-outreach-shared";
 import {
   saveOutreachConfig,
   sendOutreachNow,

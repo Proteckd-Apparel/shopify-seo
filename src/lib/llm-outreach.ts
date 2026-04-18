@@ -4,20 +4,9 @@
 // Kept cheap by using each provider's smallest model.
 
 import { prisma } from "@/lib/prisma";
+import { PROVIDERS, type Provider } from "@/lib/llm-outreach-shared";
 
-export type Provider = "openai" | "anthropic" | "gemini" | "perplexity" | "xai";
-
-export const PROVIDERS: {
-  id: Provider;
-  label: string;
-  vendor: string;
-}[] = [
-  { id: "openai", label: "ChatGPT", vendor: "OpenAI" },
-  { id: "anthropic", label: "Claude", vendor: "Anthropic" },
-  { id: "gemini", label: "Gemini", vendor: "Google" },
-  { id: "perplexity", label: "Perplexity", vendor: "Perplexity" },
-  { id: "xai", label: "Grok", vendor: "xAI" },
-];
+export { PROVIDERS, type Provider };
 
 // Cheapest production-grade chat model per provider. Bump these only if a
 // provider deprecates one; outreach messages are short and don't need scale.
