@@ -39,7 +39,40 @@ model Settings {
   llmOutreachProviders String? // JSON string[] of enabled providers: openai | anthropic | gemini | perplexity | xai
   llmOutreachWhatYouSell String?
   llmOutreachDifferentiator String?
+  promptTrackingEnabled Boolean @default(true)
+  promptTrackingProviders String? // JSON Provider[]; defaults to all with keys
+  promptBrandKeywords   String?   // comma-separated; mention-detection haystack
   updatedAt       DateTime @updatedAt
+}
+
+// Prompts to monitor across LLM providers. Each enabled prompt gets run on
+// a cadence and the response is scanned for brand keyword mentions.
+model TrackedPrompt {
+  id        String   @id @default(cuid())
+  text      String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  results   PromptResult[]
+
+  @@index([enabled])
+}
+
+model PromptResult {
+  id             String   @id @default(cuid())
+  promptId       String
+  prompt         TrackedPrompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  provider       String   // openai | anthropic | gemini | perplexity | xai
+  status         String   // success | error
+  response       String?
+  brandMentioned Boolean  @default(false)
+  matchedKeyword String?
+  error          String?
+  runAt          DateTime @default(now())
+
+  @@index([promptId, runAt])
+  @@index([runAt])
 }
 
 // Log of every LLM outreach message sent. One row per provider per send.

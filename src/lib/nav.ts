@@ -379,6 +379,12 @@ export const NAV: NavSection[] = [
         icon: MessageSquare,
       },
       {
+        slug: "prompt-tracking",
+        title: "Prompt Tracking",
+        description: "Monitor whether LLMs mention your brand on tracked prompts.",
+        icon: Search,
+      },
+      {
         slug: "llms-txt",
         title: "LLMs.txt",
         description: "Generate an llms.txt for your store.",
