@@ -37,6 +37,14 @@ export function indexNowKeyLocation(): string | null {
   return `${proxy}/feeds/indexnow-key.txt`;
 }
 
+type ArticleRawBlog = {
+  blog?: { handle?: string | null } | null;
+};
+
+// Build URLs from origin + handle so every URL lives on the verified public
+// domain. Ignoring Resource.url is intentional — that field holds whatever
+// Shopify returned, usually the myshopify.com origin, which IndexNow rejects
+// with "URLs are not related to your verified domain".
 export async function collectStoreUrls(origin: string): Promise<string[]> {
   const rows = await prisma.resource.findMany({
     where: {
@@ -47,27 +55,30 @@ export async function collectStoreUrls(origin: string): Promise<string[]> {
         { type: "page", status: "published" },
       ],
     },
-    select: { type: true, handle: true, url: true },
+    select: { type: true, handle: true, raw: true },
   });
 
   const urls = new Set<string>();
+  urls.add(`${origin}/`);
   for (const r of rows) {
-    if (r.url) {
-      urls.add(r.url);
-      continue;
-    }
     if (!r.handle) continue;
-    const prefix =
-      r.type === "product"
-        ? "products"
-        : r.type === "collection"
-          ? "collections"
-          : r.type === "page"
-            ? "pages"
-            : null;
-    if (prefix) urls.add(`${origin}/${prefix}/${r.handle}`);
-    // Articles need their blog handle which isn't in the columns; skip them
-    // from auto-collection. Manual / real-time submission can include them.
+    if (r.type === "product")
+      urls.add(`${origin}/products/${r.handle}`);
+    else if (r.type === "collection")
+      urls.add(`${origin}/collections/${r.handle}`);
+    else if (r.type === "page")
+      urls.add(`${origin}/pages/${r.handle}`);
+    else if (r.type === "article") {
+      let blogHandle: string | null = null;
+      try {
+        const raw = r.raw ? (JSON.parse(r.raw) as ArticleRawBlog) : {};
+        blogHandle = raw.blog?.handle ?? null;
+      } catch {
+        blogHandle = null;
+      }
+      if (blogHandle)
+        urls.add(`${origin}/blogs/${blogHandle}/${r.handle}`);
+    }
   }
   return [...urls];
 }
