@@ -3,6 +3,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { FaqEditButton } from "./faq-editor";
+import { BulkGenerateFaqsButton } from "./bulk-button";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +17,17 @@ export default async function JsonLdFaqPage({
   const sp = await searchParams;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10));
 
-  const products = await prisma.resource.findMany({
-    where: { type: "product" },
-    orderBy: { title: "asc" },
-    take: PAGE_SIZE,
-    skip: (page - 1) * PAGE_SIZE,
-  });
+  const [products, activeCount] = await Promise.all([
+    prisma.resource.findMany({
+      where: { type: "product" },
+      orderBy: { title: "asc" },
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+    }),
+    prisma.resource.count({
+      where: { type: "product", status: { in: ["active", "ACTIVE"] } },
+    }),
+  ]);
 
   return (
     <div>
@@ -44,6 +50,8 @@ export default async function JsonLdFaqPage({
         metafield, so it renders alongside your Product schema. No extra theme
         snippet required.
       </div>
+
+      <BulkGenerateFaqsButton productCount={activeCount} />
 
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <table className="w-full text-sm">

@@ -6,6 +6,7 @@ import { shopifyGraphQL } from "@/lib/shopify";
 import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
 import { getAnthropic, MODELS } from "@/lib/anthropic";
 import { loadOptimizerConfig } from "@/lib/optimizer-config";
+import { startJob, setProgress, finishJob } from "@/lib/bulk-job";
 import {
   buildBreadcrumbForResource,
   generateProductSchema,
@@ -220,5 +221,103 @@ Generate ${count} FAQs as a JSON array.`;
     return { ok: true, faqs };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
+  }
+}
+
+// ---------- Bulk: generate + save AI FAQs for every active product ----------
+
+export type BulkFaqResult = {
+  ok: boolean;
+  message: string;
+  processed: number;
+  saved: number;
+  skipped: number;
+  failed: number;
+};
+
+// Approx token use per call at 5 FAQs: ~400 input + ~800 output = ~1200
+// total. At Haiku 4.5 ($1/M in, $5/M out) that's ~$0.0044 per product.
+// For a 250-product catalog: ~$1.10. Still — respect the user's rule of
+// "test one first" by skipping any product that already has FAQs unless
+// forced, so re-running the bulk is idempotent.
+export async function bulkGenerateAndSaveFaqs(opts: {
+  count?: number;
+  overwriteExisting?: boolean;
+}): Promise<BulkFaqResult> {
+  const count = opts.count ?? 5;
+  const overwrite = opts.overwriteExisting ?? false;
+
+  const products = await prisma.resource.findMany({
+    where: {
+      type: "product",
+      status: { in: ["active", "ACTIVE"] },
+    },
+    orderBy: { id: "asc" },
+    select: { id: true, title: true, bodyHtml: true },
+  });
+  const job = await startJob("json_ld_products", products.length);
+  let saved = 0;
+  let skipped = 0;
+  let failed = 0;
+  try {
+    for (let i = 0; i < products.length; i++) {
+      const p = products[i];
+      try {
+        // Skip products with no description — can't generate grounded FAQs
+        // without source text.
+        const body = (p.bodyHtml ?? "").replace(/<[^>]+>/g, " ").trim();
+        if (body.length < 50) {
+          skipped++;
+          await setProgress(job.id, i + 1);
+          continue;
+        }
+
+        if (!overwrite) {
+          const existing = await loadFaqsForProduct(p.id);
+          if (existing.length > 0) {
+            skipped++;
+            await setProgress(job.id, i + 1);
+            continue;
+          }
+        }
+
+        const gen = await generateFaqsAI(p.id, count);
+        if (!gen.ok || !gen.faqs) {
+          failed++;
+          await setProgress(job.id, i + 1);
+          continue;
+        }
+
+        const save = await saveFaqsForProduct(p.id, gen.faqs);
+        if (save.ok) saved++;
+        else failed++;
+      } catch {
+        failed++;
+      }
+      await setProgress(job.id, i + 1);
+    }
+    await finishJob(job.id, { ok: failed === 0 });
+    revalidatePath("/products/json-ld-faq");
+    return {
+      ok: failed === 0,
+      message: `Saved ${saved}, skipped ${skipped}, failed ${failed}`,
+      processed: products.length,
+      saved,
+      skipped,
+      failed,
+    };
+  } catch (e) {
+    await finishJob(job.id, {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed",
+    });
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Failed",
+      processed: products.length,
+      saved,
+      skipped,
+      failed,
+    };
   }
 }
