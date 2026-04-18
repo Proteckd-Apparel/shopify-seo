@@ -341,6 +341,34 @@ export function ProductsTab({
                 className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded"
               />
             </Field>
+            <Field label="Transit Time Min (days)">
+              <input
+                type="number"
+                value={cfg.shippingTimeMinDays ?? ""}
+                onChange={(e) =>
+                  patch({
+                    shippingTimeMinDays:
+                      e.target.value === "" ? null : parseInt(e.target.value, 10) || 0,
+                  })
+                }
+                placeholder="3"
+                className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded"
+              />
+            </Field>
+            <Field label="Transit Time Max (days)">
+              <input
+                type="number"
+                value={cfg.shippingTimeMaxDays ?? ""}
+                onChange={(e) =>
+                  patch({
+                    shippingTimeMaxDays:
+                      e.target.value === "" ? null : parseInt(e.target.value, 10) || 0,
+                  })
+                }
+                placeholder="7"
+                className="w-full px-3 py-1.5 text-sm border border-slate-200 rounded"
+              />
+            </Field>
             <Toggle
               label="Free Shipping"
               checked={cfg.freeShipping}

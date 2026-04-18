@@ -230,16 +230,12 @@ function generateProductSchemaInternal(
         maxValue: cfg.handlingTimeMaxDays,
         unitCode: "DAY",
       },
-      ...(cfg.shippingTimeMinDays && cfg.shippingTimeMaxDays
-        ? {
-            transitTime: {
-              "@type": "QuantitativeValue",
-              minValue: cfg.shippingTimeMinDays,
-              maxValue: cfg.shippingTimeMaxDays,
-              unitCode: "DAY",
-            },
-          }
-        : {}),
+      transitTime: {
+        "@type": "QuantitativeValue",
+        minValue: cfg.shippingTimeMinDays ?? 3,
+        maxValue: cfg.shippingTimeMaxDays ?? 7,
+        unitCode: "DAY",
+      },
     },
   };
 
