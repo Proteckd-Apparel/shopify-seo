@@ -11,14 +11,22 @@ export const dynamic = "force-dynamic";
 export const revalidate = 3600;
 
 export async function GET() {
-  // Railway routes requests through an internal proxy, so request.url's
-  // origin is `http://localhost:8080`. The real public hostname lives in
-  // x-forwarded-host. Fall back to PUBLIC_APP_URL env (explicit override)
-  // then to a sensible default if neither is set.
+  // Google requires submitted sitemap URLs to live on the verified domain.
+  // When SHOPIFY_APP_PROXY_URL is set (e.g.
+  // https://www.proteckd.com/apps/proteckd-seo), we emit sub-sitemap URLs
+  // under that proxy so Google follows them via the store's canonical
+  // hostname instead of the Railway one.
+  //
+  // Fallback order:
+  //   1. SHOPIFY_APP_PROXY_URL (proxied path on your store domain)
+  //   2. PUBLIC_APP_URL (explicit public Railway URL)
+  //   3. x-forwarded-host (what the current request came through)
+  //   4. Hard-coded Railway URL (last resort)
   const h = await headers();
   const forwardedHost = h.get("x-forwarded-host");
   const forwardedProto = h.get("x-forwarded-proto") ?? "https";
   const base =
+    process.env.SHOPIFY_APP_PROXY_URL?.replace(/\/$/, "") ||
     process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ||
     (forwardedHost ? `${forwardedProto}://${forwardedHost}` : null) ||
     "https://shopify-seo-production.up.railway.app";

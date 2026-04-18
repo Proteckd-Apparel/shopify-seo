@@ -45,9 +45,16 @@ export default async function SitemapsPage() {
   const shopifySitemapUrl = `https://${domain}/sitemap.xml`;
 
   const h = await headers();
-  const host = h.get("host") ?? "shopify-seo-production.up.railway.app";
-  const proto = h.get("x-forwarded-proto") ?? "https";
-  const appOrigin = `${proto}://${host}`;
+  const forwardedHost = h.get("x-forwarded-host") ?? h.get("host");
+  const forwardedProto = h.get("x-forwarded-proto") ?? "https";
+  const railwayOrigin = `${forwardedProto}://${forwardedHost}`;
+  // Prefer the Shopify App Proxy URL (on your store domain) if configured —
+  // that's the URL Google Search Console will actually accept.
+  const appOrigin =
+    process.env.SHOPIFY_APP_PROXY_URL?.replace(/\/$/, "") ||
+    process.env.PUBLIC_APP_URL?.replace(/\/$/, "") ||
+    railwayOrigin;
+  const usingProxy = !!process.env.SHOPIFY_APP_PROXY_URL;
 
   let shopifyPreview = "Loading…";
   try {
@@ -73,6 +80,17 @@ export default async function SitemapsPage() {
           photos alongside page URLs. Paid SEO sitemap apps typically do the
           same thing — these replace them.
         </p>
+        {!usingProxy && (
+          <div className="mb-4 border border-amber-300 bg-amber-50 rounded p-3 text-xs text-amber-900">
+            <strong>Heads up:</strong> these URLs point at Railway directly.
+            Google Search Console will reject them because they&apos;re not on
+            your verified <code>www.proteckd.com</code> domain. Set{" "}
+            <code>SHOPIFY_APP_PROXY_URL</code> in Railway env (e.g.
+            <code> https://www.proteckd.com/apps/proteckd-seo</code>) after
+            configuring the Shopify App Proxy, and these URLs will flip to
+            the GSC-compatible format.
+          </div>
+        )}
 
         <div className="space-y-2">
           {CUSTOM_SITEMAPS.map((s) => {
