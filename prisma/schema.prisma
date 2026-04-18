@@ -26,6 +26,11 @@ model Settings {
   storeName       String?  // Human-readable store name for llms.txt header
   storeDescription String? // Store description blurb for llms.txt blockquote
   storefrontDomain String? // Public customer-facing domain (e.g. www.mystore.com). Falls back to shopDomain.
+  indexNowKey     String?  // Random key hosted at /apps/.../feeds/indexnow-key.txt for IndexNow
+  indexNowEnabled Boolean  @default(true) // If true, scanner pushes URLs to IndexNow on completion
+  indexNowLastSubmittedAt   DateTime?
+  indexNowLastSubmittedCount Int?
+  indexNowLastError String?
   updatedAt       DateTime @updatedAt
 }
 

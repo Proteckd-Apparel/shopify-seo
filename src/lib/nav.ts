@@ -44,6 +44,7 @@ import {
   TrendingUp,
   Wand2,
   Wrench,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -363,6 +364,12 @@ export const NAV: NavSection[] = [
         title: "Image Editor (Files)",
         description: "Edit images stored in Shopify Files.",
         icon: ImageIcon,
+      },
+      {
+        slug: "indexnow",
+        title: "IndexNow",
+        description: "Push URL changes to Bing/Yandex the instant they happen.",
+        icon: Zap,
       },
       {
         slug: "llms-txt",

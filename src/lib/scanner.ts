@@ -490,6 +490,30 @@ export async function runScan(
   });
 
   pushLog(`Scan complete: ${totalPages} pages, ${totalIssues} issues.`);
+
+  // Push the refreshed URL set to IndexNow so Bing/Yandex/Seznam can pick up
+  // any new or changed pages right away. Best-effort: a failure here must not
+  // fail the scan run itself.
+  try {
+    const { collectStoreUrls, submitUrlsToIndexNow } = await import("./indexnow");
+    const settings = await prisma.settings.findUnique({ where: { id: 1 } });
+    const publicDomain =
+      settings?.storefrontDomain?.trim() || settings?.shopDomain || null;
+    if (publicDomain && settings?.indexNowEnabled) {
+      const origin = `https://${publicDomain.replace(/^https?:\/\//, "")}`;
+      const urls = await collectStoreUrls(origin);
+      const result = await submitUrlsToIndexNow(urls);
+      pushLog(
+        result.ok
+          ? `IndexNow: submitted ${result.submitted} URLs in ${result.batches} batch(es).`
+          : `IndexNow: submission failed — ${result.error}`,
+      );
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    pushLog(`IndexNow: skipped (${msg}).`);
+  }
+
   await prisma.scanRun.update({
     where: { id: scan.id },
     data: {
