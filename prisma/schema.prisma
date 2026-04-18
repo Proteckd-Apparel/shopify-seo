@@ -31,7 +31,29 @@ model Settings {
   indexNowLastSubmittedAt   DateTime?
   indexNowLastSubmittedCount Int?
   indexNowLastError String?
+  openaiKey       String?  // OpenAI API key (for LLM outreach)
+  geminiKey       String?  // Google Gemini API key (for LLM outreach)
+  perplexityKey   String?  // Perplexity API key (for LLM outreach)
+  xaiKey          String?  // xAI / Grok API key (for LLM outreach)
+  llmOutreachEnabled Boolean @default(true)
+  llmOutreachProviders String? // JSON string[] of enabled providers: openai | anthropic | gemini | perplexity | xai
+  llmOutreachWhatYouSell String?
+  llmOutreachDifferentiator String?
   updatedAt       DateTime @updatedAt
+}
+
+// Log of every LLM outreach message sent. One row per provider per send.
+model LLMOutreachMessage {
+  id        String   @id @default(cuid())
+  provider  String   // openai | anthropic | gemini | perplexity | xai
+  status    String   // success | error
+  message   String
+  response  String?
+  error     String?
+  sentAt    DateTime @default(now())
+
+  @@index([provider, sentAt])
+  @@index([sentAt])
 }
 
 // Snapshot of original image bytes before any compress/rename operation,

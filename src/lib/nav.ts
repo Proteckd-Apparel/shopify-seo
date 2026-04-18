@@ -372,6 +372,12 @@ export const NAV: NavSection[] = [
         icon: Zap,
       },
       {
+        slug: "llm-outreach",
+        title: "LLM Outreach",
+        description: "Weekly brand brief to ChatGPT/Claude/Gemini/Perplexity/Grok.",
+        icon: MessageSquare,
+      },
+      {
         slug: "llms-txt",
         title: "LLMs.txt",
         description: "Generate an llms.txt for your store.",
