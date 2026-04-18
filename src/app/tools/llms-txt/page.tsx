@@ -1,5 +1,6 @@
 import { Brain, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { GET as generateLlmsTxt } from "@/app/feeds/llms.txt/route";
 
 export const dynamic = "force-dynamic";
 
@@ -7,11 +8,8 @@ export default async function LlmsTxtPage() {
   const url = "/feeds/llms.txt";
   let preview = "";
   try {
-    const r = await fetch(
-      `${process.env.RAILWAY_STATIC_URL ? "https://" + process.env.RAILWAY_STATIC_URL : "http://localhost:3000"}${url}`,
-      { cache: "no-store" },
-    );
-    preview = await r.text();
+    const res = await generateLlmsTxt();
+    preview = await res.text();
   } catch {}
 
   return (

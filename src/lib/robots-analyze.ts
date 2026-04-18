@@ -104,9 +104,15 @@ export function checkAccess(
     }
   }
 
-  const matchedAgent = group.userAgents.find((ua) =>
-    ua === "*" ? true : userAgent.toLowerCase().includes(ua),
+  // Prefer the non-wildcard UA label if this group only matched via "*";
+  // otherwise report the specific UA string so the UI surfaces why this
+  // crawler matched (e.g. "matched ClaudeBot" vs "matched *").
+  const uaLower = userAgent.toLowerCase();
+  const specificAgent = group.userAgents.find(
+    (ua) => ua !== "*" && uaLower.includes(ua),
   );
+  const matchedAgent =
+    specificAgent ?? (group.userAgents.includes("*") ? "*" : null);
 
   if (!best) {
     return { allowed: true, matchedRule: null, matchedGroupAgent: matchedAgent ?? null };

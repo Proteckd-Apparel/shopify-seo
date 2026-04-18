@@ -16,6 +16,33 @@ export const MODELS: Record<Provider, string> = {
   xai: "grok-3-mini",
 };
 
+// Defensive response reader: upstream providers sometimes return HTML
+// (e.g. Cloudflare 502), plain text (rate-limit hints), or an error object
+// that doesn't look like their happy-path schema. Checking r.ok first and
+// handling non-JSON keeps us from surfacing "Unexpected token <" to the UI
+// instead of the real HTTP status.
+async function readJsonOrThrow<T>(r: Response): Promise<T> {
+  const text = await r.text();
+  if (!r.ok) {
+    let msg = "";
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: { message?: string } | string;
+      };
+      if (typeof parsed?.error === "string") msg = parsed.error;
+      else if (parsed?.error?.message) msg = parsed.error.message;
+    } catch {
+      msg = text.slice(0, 200);
+    }
+    throw new Error(`HTTP ${r.status}${msg ? `: ${msg}` : ""}`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Non-JSON response: ${text.slice(0, 200)}`);
+  }
+}
+
 async function sendOpenAI(
   key: string,
   message: string,
@@ -33,11 +60,9 @@ async function sendOpenAI(
       max_tokens: maxTokens,
     }),
   });
-  const data = (await r.json()) as {
+  const data = await readJsonOrThrow<{
     choices?: { message?: { content?: string } }[];
-    error?: { message?: string };
-  };
-  if (!r.ok) throw new Error(data.error?.message || `HTTP ${r.status}`);
+  }>(r);
   return data.choices?.[0]?.message?.content ?? "";
 }
 
@@ -59,11 +84,9 @@ async function sendAnthropic(
       messages: [{ role: "user", content: message }],
     }),
   });
-  const data = (await r.json()) as {
+  const data = await readJsonOrThrow<{
     content?: { text?: string }[];
-    error?: { message?: string };
-  };
-  if (!r.ok) throw new Error(data.error?.message || `HTTP ${r.status}`);
+  }>(r);
   return data.content?.[0]?.text ?? "";
 }
 
@@ -81,11 +104,9 @@ async function sendGemini(
       generationConfig: { maxOutputTokens: maxTokens },
     }),
   });
-  const data = (await r.json()) as {
+  const data = await readJsonOrThrow<{
     candidates?: { content?: { parts?: { text?: string }[] } }[];
-    error?: { message?: string };
-  };
-  if (!r.ok) throw new Error(data.error?.message || `HTTP ${r.status}`);
+  }>(r);
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
@@ -106,11 +127,9 @@ async function sendPerplexity(
       max_tokens: maxTokens,
     }),
   });
-  const data = (await r.json()) as {
+  const data = await readJsonOrThrow<{
     choices?: { message?: { content?: string } }[];
-    error?: { message?: string };
-  };
-  if (!r.ok) throw new Error(data.error?.message || `HTTP ${r.status}`);
+  }>(r);
   return data.choices?.[0]?.message?.content ?? "";
 }
 
@@ -131,11 +150,9 @@ async function sendXai(
       max_tokens: maxTokens,
     }),
   });
-  const data = (await r.json()) as {
+  const data = await readJsonOrThrow<{
     choices?: { message?: { content?: string } }[];
-    error?: { message?: string };
-  };
-  if (!r.ok) throw new Error(data.error?.message || `HTTP ${r.status}`);
+  }>(r);
   return data.choices?.[0]?.message?.content ?? "";
 }
 
