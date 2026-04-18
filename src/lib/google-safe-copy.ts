@@ -142,8 +142,11 @@ ${cleanDesc}
 Rewrite for Google Merchant Center now. Return JSON.`;
 
   const res = await client.messages.create({
+    // max_tokens bumped to 4000 — the source descriptions include full size
+    // charts that balloon the output JSON past 2500 tokens, truncating mid-
+    // string and breaking the parse.
     model: MODELS.fast,
-    max_tokens: 2500,
+    max_tokens: 4000,
     system: [
       {
         type: "text",
@@ -161,22 +164,34 @@ Rewrite for Google Merchant Center now. Return JSON.`;
   text = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
 
   let parsed: { title?: string; description?: string } = {};
+  let parseError: string | null = null;
   try {
     parsed = JSON.parse(text);
-  } catch {
+  } catch (e) {
+    parseError = e instanceof Error ? e.message : "unknown";
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
     if (start >= 0 && end > start) {
       try {
         parsed = JSON.parse(text.slice(start, end + 1));
-      } catch {}
+        parseError = null;
+      } catch (e2) {
+        parseError = e2 instanceof Error ? e2.message : "unknown (extraction)";
+      }
     }
   }
 
   const title = String(parsed.title ?? "").trim().slice(0, 150);
   const description = String(parsed.description ?? "").trim().slice(0, 4500);
   if (!title || !description) {
-    throw new Error("AI returned empty title or description");
+    // Surface what actually came back so bulk failures are debuggable
+    // instead of silent. Truncate to 400 chars to keep the error message
+    // from ballooning DB rows.
+    const stopReason = res.stop_reason ?? "unknown";
+    const preview = text.slice(0, 400).replace(/\s+/g, " ");
+    throw new Error(
+      `AI returned empty title or description (stop_reason=${stopReason}, parseErr=${parseError ?? "none"}, titleLen=${title.length}, descLen=${description.length}, preview=${preview})`,
+    );
   }
   return { title, description };
 }
