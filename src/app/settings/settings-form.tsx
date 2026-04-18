@@ -17,6 +17,7 @@ export function SettingsForm({
     optimizerRules: string;
     storeName: string;
     storeDescription: string;
+    storefrontDomain: string;
   };
 }) {
   const [state, action, pending] = useActionState(
@@ -112,6 +113,17 @@ export function SettingsForm({
             defaultValue={defaults.storeDescription}
             rows={3}
             placeholder="We sell X for people who Y..."
+            className="input"
+          />
+        </Field>
+        <Field
+          label="Storefront domain"
+          hint="Your public customer-facing domain. Used for the URLs in llms.txt. Leave blank to fall back to the shop domain."
+        >
+          <input
+            name="storefrontDomain"
+            defaultValue={defaults.storefrontDomain}
+            placeholder="www.yourstore.com"
             className="input"
           />
         </Field>

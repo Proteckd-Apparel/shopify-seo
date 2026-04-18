@@ -30,6 +30,11 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
     String(formData.get("storeName") || "").trim() || null;
   const storeDescription =
     String(formData.get("storeDescription") || "").trim() || null;
+  const storefrontDomain =
+    String(formData.get("storefrontDomain") || "")
+      .trim()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "") || null;
 
   await prisma.settings.upsert({
     where: { id: 1 },
@@ -42,6 +47,7 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       optimizerRules,
       storeName,
       storeDescription,
+      storefrontDomain,
     },
     create: {
       id: 1,
@@ -53,6 +59,7 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       optimizerRules,
       storeName,
       storeDescription,
+      storefrontDomain,
     },
   });
 

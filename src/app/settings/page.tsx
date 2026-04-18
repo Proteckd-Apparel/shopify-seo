@@ -24,6 +24,7 @@ export default async function SettingsPage() {
           optimizerRules: s?.optimizerRules ?? "",
           storeName: s?.storeName ?? "",
           storeDescription: s?.storeDescription ?? "",
+          storefrontDomain: s?.storefrontDomain ?? "",
         }}
       />
     </div>

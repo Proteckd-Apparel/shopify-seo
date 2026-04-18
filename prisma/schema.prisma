@@ -25,6 +25,7 @@ model Settings {
   robotsBoostImages Boolean @default(false) // adds Allow rules for product images
   storeName       String?  // Human-readable store name for llms.txt header
   storeDescription String? // Store description blurb for llms.txt blockquote
+  storefrontDomain String? // Public customer-facing domain (e.g. www.mystore.com). Falls back to shopDomain.
   updatedAt       DateTime @updatedAt
 }
 

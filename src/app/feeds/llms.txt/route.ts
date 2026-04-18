@@ -12,9 +12,12 @@ type ArticleRaw = {
 
 export async function GET() {
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
-  const domain = settings?.shopDomain ?? "your-store.myshopify.com";
-  const origin = `https://${domain.replace(/^https?:\/\//, "")}`;
-  const storeName = settings?.storeName?.trim() || domain;
+  const publicDomain =
+    settings?.storefrontDomain?.trim() ||
+    settings?.shopDomain ||
+    "your-store.myshopify.com";
+  const origin = `https://${publicDomain.replace(/^https?:\/\//, "")}`;
+  const storeName = settings?.storeName?.trim() || publicDomain;
   const storeDescription = settings?.storeDescription?.trim() || "";
 
   const [collections, articles] = await Promise.all([
