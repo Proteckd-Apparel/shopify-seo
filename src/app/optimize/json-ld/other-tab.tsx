@@ -72,7 +72,7 @@ export function OtherTab({
   function applyArticles() {
     const excluded = cfg.articleBlogExclusions.length;
     const warn = excluded
-      ? `Apply Article + Breadcrumb schema to articles? Articles in ${excluded} excluded blog(s) will have their existing schema CLEARED so another tool (e.g. the autoblog) can own them.`
+      ? `Apply Article + Breadcrumb schema to articles?\n\nIn the ${excluded} excluded blog(s): articles that already have inline JSON-LD in their body (from the autoblog) get our metafield CLEARED. Older articles without inline schema still get our schema written so they're covered.`
       : "Apply Article + Breadcrumb schema to ALL blog articles? Writes a metafield on every article.";
     if (!confirm(warn)) return;
     setMsg(null);
@@ -133,12 +133,23 @@ export function OtherTab({
           <div className="text-xs text-slate-500 mt-1">
             Useful when another tool owns the schema for certain blogs (e.g.
             the autoblog emits richer HowTo / Speakable / Person schema for
-            its posts). Checked blogs will have their{" "}
-            <code className="font-mono bg-slate-100 px-1 rounded">
-              custom.json_ld
-            </code>{" "}
-            metafield CLEARED the next time you click <em>Update all articles</em>,
-            so duplicate JSON-LD stops competing with the autoblog's output.
+            its posts). On the next <em>Update all articles</em> run, each
+            article in a checked blog is evaluated:
+            <ul className="list-disc list-inside mt-1 ml-1 space-y-0.5">
+              <li>
+                Article body already has inline JSON-LD (autoblog-generated)
+                → our{" "}
+                <code className="font-mono bg-slate-100 px-1 rounded">
+                  custom.json_ld
+                </code>{" "}
+                metafield is CLEARED (no duplicate schema).
+              </li>
+              <li>
+                Article body has NO inline JSON-LD (older manually-written
+                post) → we still write our metafield so the page has
+                coverage.
+              </li>
+            </ul>
           </div>
         </div>
         {blogHandles.length === 0 ? (
@@ -170,7 +181,7 @@ export function OtherTab({
                   </label>
                   {excluded && (
                     <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                      will clear
+                      per-article
                     </span>
                   )}
                 </li>

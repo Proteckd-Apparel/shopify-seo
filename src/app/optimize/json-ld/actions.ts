@@ -408,6 +408,20 @@ function blogHandleOf(rawJson: string | null | undefined): string | null {
   }
 }
 
+// Detects whether an article's body already contains its own JSON-LD script
+// (as the autoblog emits for posts it generated going forward). Articles
+// that DO have inline schema should not get duplicate schema from this app;
+// articles that DON'T still need our coverage even if they sit in a blog
+// the user marked as "autoblog-owned", because the autoblog isn't going back
+// to retrofit older posts.
+function hasInlineJsonLd(bodyHtml: string | null | undefined): boolean {
+  if (!bodyHtml) return false;
+  // Case-insensitive, whitespace-tolerant match on the JSON-LD script open tag.
+  return /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>/i.test(
+    bodyHtml,
+  );
+}
+
 export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
   const cfg = await loadOptimizerConfig();
   const shop = await getShop();
@@ -416,9 +430,9 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     include: { images: true },
     take: 5000,
   });
-  // Excluded blog handles get their existing metafield CLEARED instead of
-  // overwritten, so another tool (the autoblog) can own that article's
-  // schema without competing with leftover JSON-LD from this app.
+  // Excluded blog handles are where another tool may own the schema. Within
+  // those blogs we still emit our schema unless the article's body already
+  // has inline JSON-LD (which means the other tool already handled it).
   const exclusions = new Set(
     (cfg.jsonLd.other.articleBlogExclusions ?? []).map((h) => h.toLowerCase()),
   );
@@ -426,22 +440,31 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
   try {
     let saved = 0;
     let cleared = 0;
+    let coveredOld = 0;
     let failed = 0;
     for (let i = 0; i < articles.length; i++) {
       const a = articles[i];
       const handle = blogHandleOf(a.raw)?.toLowerCase();
-      const excluded = handle !== null && handle !== undefined && exclusions.has(handle);
+      const inExcludedBlog =
+        handle !== null && handle !== undefined && exclusions.has(handle);
+      const hasOwnSchema = hasInlineJsonLd(a.bodyHtml);
       try {
-        if (excluded) {
+        if (inExcludedBlog && hasOwnSchema) {
+          // Autoblog-owned blog AND article already emits its own schema →
+          // clear ours so it isn't double-posted.
           await clearJsonLd(a.id);
           cleared++;
         } else {
+          // Either the blog isn't excluded, or it's excluded but the article
+          // is an older post without inline schema. Either way, write ours
+          // so the page has coverage.
           const article = generateArticleSchema(a, shop);
           const out = cfg.jsonLd.other.breadcrumb
             ? [article, buildBreadcrumbForResource(a, shop)]
             : article;
           await setJsonLd(a.id, out as Record<string, unknown>);
-          saved++;
+          if (inExcludedBlog) coveredOld++;
+          else saved++;
         }
       } catch {
         failed++;
@@ -450,9 +473,13 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     }
     await finishJob(job.id, { ok: failed === 0 });
     revalidatePath("/optimize/json-ld");
+    const parts = [`Saved ${saved}`];
+    if (coveredOld > 0) parts.push(`covered ${coveredOld} older posts in excluded blogs`);
+    if (cleared > 0) parts.push(`cleared ${cleared}`);
+    if (failed > 0) parts.push(`failed ${failed}`);
     return {
       ok: failed === 0,
-      message: `Saved ${saved}, cleared ${cleared}, failed ${failed}`,
+      message: parts.join(", "),
       processed: articles.length,
       saved,
       failed,
