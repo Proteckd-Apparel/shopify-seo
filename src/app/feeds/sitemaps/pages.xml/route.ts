@@ -6,6 +6,7 @@ import {
 } from "@/lib/sitemap-fetch";
 import { buildUrlset, XML_HEADERS, type UrlEntry } from "@/lib/sitemap-xml";
 
+export const dynamic = "force-dynamic";
 export const revalidate = 3600;
 
 export async function GET() {

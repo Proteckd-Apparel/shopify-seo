@@ -3,8 +3,10 @@
 
 import { buildSitemapIndex, XML_HEADERS } from "@/lib/sitemap-xml";
 
-// Cache for 1 hour at the edge. Shopify catalog changes propagate within
-// an hour, which is fast enough for Google's crawl cadence.
+// Rendered per-request (can't prerender — depends on Shopify creds in the
+// DB, which isn't reachable during Railway's build phase). Cached downstream
+// via Cache-Control headers instead.
+export const dynamic = "force-dynamic";
 export const revalidate = 3600;
 
 export async function GET(request: Request) {
