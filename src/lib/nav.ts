@@ -39,6 +39,7 @@ import {
   Settings as SettingsIcon,
   Shield,
   ShoppingBag,
+  Smile,
   Sparkles,
   Tag,
   Tags,
@@ -383,6 +384,12 @@ export const NAV: NavSection[] = [
         title: "Prompt Tracking",
         description: "Monitor whether LLMs mention your brand on tracked prompts.",
         icon: Search,
+      },
+      {
+        slug: "sentiment-report",
+        title: "LLM Sentiment Report",
+        description: "See how ChatGPT/Claude/Gemini/Perplexity/Grok perceive your brand.",
+        icon: Smile,
       },
       {
         slug: "llms-txt",

@@ -75,6 +75,26 @@ model PromptResult {
   @@index([runAt])
 }
 
+// Monthly sentiment snapshot per provider — we ask each LLM how it
+// perceives the brand and log its structured answer so trends across
+// runs are visible.
+model SentimentReport {
+  id          String   @id @default(cuid())
+  provider    String   // openai | anthropic | gemini | perplexity | xai
+  status      String   // success | error
+  sentiment   String?  // positive | neutral | negative | unknown
+  confidence  Float?   // 0..1 if provider gave one
+  summary     String?
+  strengths   String?  // JSON string[]
+  concerns    String?  // JSON string[]
+  rawResponse String?
+  error       String?
+  runAt       DateTime @default(now())
+
+  @@index([provider, runAt])
+  @@index([runAt])
+}
+
 // Log of every LLM outreach message sent. One row per provider per send.
 model LLMOutreachMessage {
   id        String   @id @default(cuid())
