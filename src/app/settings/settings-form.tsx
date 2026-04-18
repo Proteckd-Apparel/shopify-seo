@@ -15,6 +15,8 @@ export function SettingsForm({
     judgeMeToken: string;
     replicateToken: string;
     optimizerRules: string;
+    storeName: string;
+    storeDescription: string;
   };
 }) {
   const [state, action, pending] = useActionState(
@@ -84,6 +86,32 @@ export function SettingsForm({
             type="password"
             defaultValue={defaults.replicateToken}
             placeholder="r8_..."
+            className="input"
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="Store identity"
+        description="Used in the llms.txt header so AI crawlers know what your store is. Leave blank to fall back to the shop domain."
+      >
+        <Field label="Store name" hint="e.g. Proteck'd EMF Apparel">
+          <input
+            name="storeName"
+            defaultValue={defaults.storeName}
+            placeholder="Your Store Name"
+            className="input"
+          />
+        </Field>
+        <Field
+          label="Store description"
+          hint="One or two sentences. Rendered as the llms.txt blockquote."
+        >
+          <textarea
+            name="storeDescription"
+            defaultValue={defaults.storeDescription}
+            rows={3}
+            placeholder="We sell X for people who Y..."
             className="input"
           />
         </Field>

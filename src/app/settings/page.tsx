@@ -22,6 +22,8 @@ export default async function SettingsPage() {
           judgeMeToken: s?.judgeMeToken ?? "",
           replicateToken: s?.replicateToken ?? "",
           optimizerRules: s?.optimizerRules ?? "",
+          storeName: s?.storeName ?? "",
+          storeDescription: s?.storeDescription ?? "",
         }}
       />
     </div>

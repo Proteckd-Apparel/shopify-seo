@@ -26,6 +26,10 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
     String(formData.get("replicateToken") || "").trim() || null;
   const optimizerRules =
     String(formData.get("optimizerRules") || "").trim() || null;
+  const storeName =
+    String(formData.get("storeName") || "").trim() || null;
+  const storeDescription =
+    String(formData.get("storeDescription") || "").trim() || null;
 
   await prisma.settings.upsert({
     where: { id: 1 },
@@ -36,6 +40,8 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       judgeMeToken,
       replicateToken,
       optimizerRules,
+      storeName,
+      storeDescription,
     },
     create: {
       id: 1,
@@ -45,6 +51,8 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       judgeMeToken,
       replicateToken,
       optimizerRules,
+      storeName,
+      storeDescription,
     },
   });
 
