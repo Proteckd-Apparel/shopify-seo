@@ -71,13 +71,13 @@ ALWAYS STRIP (hard-delete, never rephrase):
 - "Cures", "treats", "prevents disease", "heals"
 - Any claim that the product affects a body part, body system, or health condition
 - Emoji + body-benefit bullets (e.g. ✅ Boosts X, ✅ Supports Y)
-- "Recommended for: individuals seeking to support [body system]" — strip the body-system part
+- "Recommended for: individuals seeking to support [body system]" (strip the body-system part)
 
 ALWAYS KEEP (do not sanitize these):
 - Brand: "Proteck'd Apparel" (the store brand)
 - Product line name (Aelix, PhaseX, Vibe, Zephyr, etc.)
 - Category (jeans, hoodie, shirt, shorts, hat)
-- "EMF Protection" and related keywords — "EMF-Blocking Technology", "EMF Shielding", "99% EMF Protection", "blocks 3G / 4G / 5G / Wi-Fi / Bluetooth". These are valuable keywords; DO NOT strip them.
+- "EMF Protection" and related keywords such as "EMF-Blocking Technology", "EMF Shielding", "99% EMF Protection", "blocks 3G / 4G / 5G / Wi-Fi / Bluetooth". These are valuable keywords; DO NOT strip them.
 - AuraShield™ / Faraday technology names + accurate construction
 - Fabric composition (percentages, silver content, cotton/polyester blend)
 - Sizes, colors, fit, gender/audience
@@ -88,17 +88,15 @@ CONSTRUCTION TO USE (this product's technology):
 ${techDescription(tech)}
 
 STYLE (match this tone from a reference Faraday product):
-- Title example: "Faraday Short Sleeve T-Shirt – Comfort and EMF Protection"
-- Description opens with 1-2 sentence hook
-- Short bulleted benefit lines, each pairing a feature with its function
-  (e.g. "EMF-Blocking Technology: Reduces exposure to electromagnetic radiation")
-- Product function, fabric, fit, sizing — in that order
+- Description opens with a 1 to 2 sentence hook
+- Short bulleted benefit lines. Each line pairs a feature name with its function using a COLON, like "EMF-Blocking Technology: Reduces exposure to electromagnetic radiation"
+- Cover product function, fabric, fit, and sizing in that order
 - End with a brief "Stay protected and stylish" style call-out
-- No emojis, no ✅ marks (they read as scammy in Shopping feeds)
+- No emojis, no checkmarks (they read as scammy in Shopping feeds)
 
 TITLES:
 - Under 150 chars
-- Format examples:
+- Dashes are allowed in titles. Format examples:
   * "Aelix Men's Low Rise Skinny Jeans by Proteck'd Apparel – AuraShield EMF Protection"
   * "Zephyr Faraday EMF Protection T-Shirt by Proteck'd Apparel – Silver-Infused Fabric"
 
@@ -106,14 +104,42 @@ DESCRIPTIONS:
 - Under 4500 chars
 - Plain text only (strip incoming HTML)
 - Use the bullet format above
-- Describe product FUNCTION ("blocks 99% of EMF radiation") not body OUTCOME ("boosts fertility")
+- Describe product FUNCTION (e.g. "blocks 99% of EMF radiation") not body OUTCOME (e.g. "boosts fertility")
 - Keep fabric composition and size chart if present
+
+DESCRIPTION PUNCTUATION RULE (strict, applies to description only — titles are exempt):
+- NEVER use an em dash ("—") or en dash ("–") anywhere in the description
+- NEVER use a hyphen surrounded by spaces (" - ") as a punctuation / comma replacement
+- Use colons, commas, periods, or new sentences instead
+- Compound-word hyphens are fine and should be preserved: "EMF-Blocking", "Wrinkle-Free", "silver-infused", "laid-back", "long-lasting", "moisture-wicking"
+- Do not mimic any dashes that appear in the source description when rewriting
 
 OUTPUT: STRICT JSON only, no prose, no code fences:
 {
   "title": "...",
   "description": "..."
 }`;
+}
+
+// Safety net: Haiku ignores the "no dashes in description" instruction ~30%
+// of the time, and the user's brand voice rule forbids em/en dashes (and
+// hyphens used as commas) in body copy. Titles are exempt, so only the
+// description gets stripped. Compound-word hyphens are preserved.
+//
+// Passes in order:
+//   1. Em dash with any surrounding whitespace → comma-space
+//   2. En dash with any surrounding whitespace → comma-space
+//   3. Space-hyphen-space (" - ") → comma-space
+//   4. Collapse accidental ", ," or ",," sequences created by step 1/2/3
+//   5. Collapse runs of spaces
+function stripDashPunctuation(s: string): string {
+  return s
+    .replace(/\s*—\s*/g, ", ")
+    .replace(/\s*–\s*/g, ", ")
+    .replace(/ - /g, ", ")
+    .replace(/,\s*,+/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export async function rewriteForGoogleShopping(
@@ -182,7 +208,8 @@ Rewrite for Google Merchant Center now. Return JSON.`;
   }
 
   const title = String(parsed.title ?? "").trim().slice(0, 150);
-  const description = String(parsed.description ?? "").trim().slice(0, 4500);
+  const rawDescription = String(parsed.description ?? "").trim().slice(0, 4500);
+  const description = stripDashPunctuation(rawDescription);
   if (!title || !description) {
     // Surface what actually came back so bulk failures are debuggable
     // instead of silent. Truncate to 400 chars to keep the error message
