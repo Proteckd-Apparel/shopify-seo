@@ -1,0 +1,102 @@
+// Periodic cleanup jobs. Called from the /api/cron/cleanup route so Railway
+// cron (or an external pinger) can drive them. Each helper is idempotent and
+// safe to run as often as every hour.
+
+import { prisma } from "./prisma";
+import { pruneOldBackups } from "./image-backup";
+import { pruneOldScanRuns } from "./scanner";
+
+// NotFound rows are written per unique 404 URL and bumped on repeat hits. On
+// a busy store with 404-spamming bots, this table can accumulate tens of
+// thousands of stale entries with no user-facing value. Policy:
+//   - Drop resolved rows older than 14 days (already fixed, keep a window).
+//   - Drop unresolved rows older than 180 days AND count < 5 (likely noise).
+// Override NOTFOUND_TTL_DAYS / NOTFOUND_RESOLVED_TTL_DAYS to tune.
+
+const NOTFOUND_TTL_DAYS = Number(process.env.NOTFOUND_TTL_DAYS || 180);
+const NOTFOUND_RESOLVED_TTL_DAYS = Number(
+  process.env.NOTFOUND_RESOLVED_TTL_DAYS || 14,
+);
+
+export async function pruneOldNotFound(): Promise<{
+  resolved: number;
+  stale: number;
+}> {
+  const now = Date.now();
+  const resolvedCutoff = new Date(
+    now - NOTFOUND_RESOLVED_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const staleCutoff = new Date(now - NOTFOUND_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  const resolved = await prisma.notFound.deleteMany({
+    where: { resolved: true, lastSeen: { lt: resolvedCutoff } },
+  });
+  const stale = await prisma.notFound.deleteMany({
+    where: { resolved: false, lastSeen: { lt: staleCutoff }, count: { lt: 5 } },
+  });
+
+  return { resolved: resolved.count, stale: stale.count };
+}
+
+// BrokenLink rows are re-generated on every scan, so older-than-30-days rows
+// are almost always stale captures from deleted products. Prune to keep the
+// broken-links UI responsive.
+const BROKEN_LINK_TTL_DAYS = Number(process.env.BROKEN_LINK_TTL_DAYS || 30);
+
+export async function pruneOldBrokenLinks(): Promise<number> {
+  const cutoff = new Date(
+    Date.now() - BROKEN_LINK_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const result = await prisma.brokenLink.deleteMany({
+    where: { foundAt: { lt: cutoff } },
+  });
+  return result.count;
+}
+
+// JobRun is ephemeral progress tracking. Anything finished over 7 days ago
+// is noise. Queued/running rows are never pruned.
+const JOB_RUN_TTL_DAYS = Number(process.env.JOB_RUN_TTL_DAYS || 7);
+
+export async function pruneOldJobRuns(): Promise<number> {
+  const cutoff = new Date(
+    Date.now() - JOB_RUN_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const result = await prisma.jobRun.deleteMany({
+    where: {
+      status: { in: ["done", "failed"] },
+      finishedAt: { lt: cutoff },
+    },
+  });
+  return result.count;
+}
+
+export type CleanupReport = {
+  imageBackups: number;
+  scanRuns: number;
+  notFoundResolved: number;
+  notFoundStale: number;
+  brokenLinks: number;
+  jobRuns: number;
+  durationMs: number;
+};
+
+export async function runAllCleanups(): Promise<CleanupReport> {
+  const start = Date.now();
+  const [imageBackups, scanRuns, notFound, brokenLinks, jobRuns] =
+    await Promise.all([
+      pruneOldBackups(),
+      pruneOldScanRuns(),
+      pruneOldNotFound(),
+      pruneOldBrokenLinks(),
+      pruneOldJobRuns(),
+    ]);
+  return {
+    imageBackups,
+    scanRuns,
+    notFoundResolved: notFound.resolved,
+    notFoundStale: notFound.stale,
+    brokenLinks,
+    jobRuns,
+    durationMs: Date.now() - start,
+  };
+}

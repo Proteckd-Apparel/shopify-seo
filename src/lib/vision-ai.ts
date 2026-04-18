@@ -61,10 +61,20 @@ Output schema:
     .filter(Boolean)
     .join("\n");
 
+  // Prompt caching: the system prompt is stable across every image we
+  // process in a bulk run, so flagging it cacheable turns repeat calls into
+  // cache reads (10% of input-token cost). The image + meta block per call
+  // stays uncached.
   const message = await client.messages.create({
     model: MODELS.fast,
     max_tokens: 300,
-    system,
+    system: [
+      {
+        type: "text",
+        text: system,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [
       {
         role: "user",

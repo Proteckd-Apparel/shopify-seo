@@ -5,13 +5,15 @@ import { Sparkles, RotateCcw, Search } from "lucide-react";
 import {
   compressAll,
   compressOne,
-  DEFAULT_COMPRESS_SETTINGS,
   restoreFromBackup,
   searchImagesForCompressPicker,
   testCompressOne,
+} from "./actions";
+import {
+  DEFAULT_COMPRESS_SETTINGS,
   type CompressSettings,
   type TestResult,
-} from "./actions";
+} from "./config";
 
 export function CompressUI() {
   const [settings, setSettings] = useState<CompressSettings>(

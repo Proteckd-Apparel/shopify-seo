@@ -18,11 +18,29 @@ const CORS_HEADERS = {
 
 // Tiny in-memory rate limiter — 60 requests/min per IP. Resets on cold start
 // which is fine; this is just spam protection, not a security boundary.
+//
+// Map is capped at MAX_BUCKETS entries so distinct-IP bot sprays can't grow
+// it without bound. On overflow we evict the oldest expired entry; if none
+// are expired, we evict the entry with the nearest resetAt (soonest to
+// expire anyway). LRU would be nicer but this is cheap and good enough.
+const MAX_BUCKETS = 10_000;
 const buckets = new Map<string, { count: number; resetAt: number }>();
+function evictOne() {
+  let oldestKey: string | null = null;
+  let oldestAt = Infinity;
+  for (const [k, b] of buckets) {
+    if (b.resetAt < oldestAt) {
+      oldestAt = b.resetAt;
+      oldestKey = k;
+    }
+  }
+  if (oldestKey) buckets.delete(oldestKey);
+}
 function rateLimit(ip: string): boolean {
   const now = Date.now();
   const b = buckets.get(ip);
   if (!b || b.resetAt < now) {
+    if (buckets.size >= MAX_BUCKETS) evictOne();
     buckets.set(ip, { count: 1, resetAt: now + 60_000 });
     return true;
   }

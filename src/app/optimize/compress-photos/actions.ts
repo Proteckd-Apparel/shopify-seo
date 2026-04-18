@@ -5,50 +5,17 @@ import { prisma } from "@/lib/prisma";
 import {
   compressImage,
   fetchOriginalBytes,
-  type CompressFormat,
 } from "@/lib/image-compress";
 import { renameProductImage } from "@/lib/shopify-file-swap";
 import { backupImage } from "@/lib/image-backup";
 import { describeImageWithVision } from "@/lib/vision-ai";
 import { updateImageAlt } from "@/lib/shopify-mutate";
 import { filenameFromUrl, slugify } from "@/lib/filename-slug";
+import type { CompressSettings, TestResult } from "./config";
 
-export type CompressSettings = {
-  format: CompressFormat; // webp/avif/jpeg
-  quality: number; // 50-95
-  maxWidth: number; // 1500-3000
-  visionAlt: boolean;
-  visionRename: boolean;
-  overwriteExistingAlts: boolean;
-  doNotReoptimize: boolean;
-};
-
-export const DEFAULT_COMPRESS_SETTINGS: CompressSettings = {
-  format: "webp",
-  quality: 80,
-  maxWidth: 2000,
-  visionAlt: false,
-  visionRename: false,
-  overwriteExistingAlts: false,
-  doNotReoptimize: true,
-};
+export type { CompressSettings, TestResult } from "./config";
 
 // ---------- Test on one image (no write) ----------
-
-export type TestResult = {
-  ok: boolean;
-  message: string;
-  imageId?: string;
-  imageUrl?: string;
-  productTitle?: string;
-  originalBytes?: number;
-  compressedBytes?: number;
-  savedPercent?: number;
-  width?: number;
-  height?: number;
-  visionAlt?: string;
-  visionFilename?: string;
-};
 
 export async function testCompressOne(
   imageId: string,
@@ -460,11 +427,7 @@ export async function compressAll(
   totalAfter: number;
 }> {
   const cap = 100;
-  const products = await prisma.resource.findMany({
-    where: { type: "product", status: "active" },
-    include: { images: true },
-    take: 5000,
-  });
+  const PAGE = 200;
 
   // Honor skip rules
   const skipRows = await prisma.skipPage.findMany({
@@ -477,21 +440,37 @@ export async function compressAll(
 
   let saved = 0;
   let failed = 0;
-  let totalBefore = 0;
-  let totalAfter = 0;
+  const totalBefore = 0;
+  const totalAfter = 0;
 
-  outer: for (const p of products) {
-    if (skipped.has(p.id)) continue;
-    for (const img of p.images) {
-      if (saved >= cap) break outer;
-      try {
-        const result = await compressOne(img.id, settings);
-        if (result.ok) saved++;
-        else failed++;
-      } catch {
-        failed++;
+  // Page through products instead of loading them all at once. The per-run
+  // cap still stops us at `cap` compressions, but pagination means catalogs
+  // >5k products don't leave tail items unreachable across repeated runs.
+  let skip = 0;
+  outer: for (;;) {
+    const products = await prisma.resource.findMany({
+      where: { type: "product", status: "active" },
+      include: { images: true },
+      orderBy: { id: "asc" },
+      take: PAGE,
+      skip,
+    });
+    if (products.length === 0) break;
+    for (const p of products) {
+      if (skipped.has(p.id)) continue;
+      for (const img of p.images) {
+        if (saved >= cap) break outer;
+        try {
+          const result = await compressOne(img.id, settings);
+          if (result.ok) saved++;
+          else failed++;
+        } catch {
+          failed++;
+        }
       }
     }
+    if (products.length < PAGE) break;
+    skip += PAGE;
   }
 
   revalidatePath("/optimize/compress-photos");

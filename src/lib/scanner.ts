@@ -501,10 +501,31 @@ export async function runScan(
     },
   });
 
+  // Prune ancient ScanRun rows so audit history doesn't grow forever. Keep
+  // the N most recent regardless of age; that covers weekly-scan stores for
+  // over a year while bounding storage.
+  await pruneOldScanRuns();
+
   return {
     scanId: scan.id,
     totalPages,
     totalIssues,
     durationMs: Date.now() - start,
   };
+}
+
+export const SCAN_RUN_KEEP = Number(process.env.SCAN_RUN_KEEP || 50);
+
+export async function pruneOldScanRuns(): Promise<number> {
+  const keepers = await prisma.scanRun.findMany({
+    orderBy: { startedAt: "desc" },
+    take: SCAN_RUN_KEEP,
+    select: { id: true },
+  });
+  if (keepers.length < SCAN_RUN_KEEP) return 0;
+  const keeperIds = keepers.map((s) => s.id);
+  const result = await prisma.scanRun.deleteMany({
+    where: { id: { notIn: keeperIds } },
+  });
+  return result.count;
 }

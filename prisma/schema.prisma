@@ -94,6 +94,9 @@ model ScanRun {
   totalIssues Int      @default(0)
   log         String?  // newline log
   issues      Issue[]
+
+  @@index([startedAt])
+  @@index([status, startedAt])
 }
 
 model Issue {
@@ -178,6 +181,7 @@ model NotFound {
 
   @@index([lastSeen])
   @@index([resolved])
+  @@index([resolved, lastSeen])
 }
 
 model JobRun {
@@ -190,4 +194,6 @@ model JobRun {
   total      Int      @default(0)
   error      String?
   createdAt  DateTime @default(now())
+
+  @@index([status, finishedAt])
 }
