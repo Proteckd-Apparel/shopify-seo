@@ -20,7 +20,7 @@ import {
 } from "@/lib/primary-collection";
 import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
 import type { JsonLdConfig } from "@/lib/json-ld-config";
-import { setJsonLd } from "@/lib/shopify-metafields";
+import { clearJsonLd, setJsonLd } from "@/lib/shopify-metafields";
 import {
   debugJudgeMe,
   fetchJudgeMeAggregate,
@@ -394,6 +394,20 @@ export async function previewCollectionSchema(
 
 // ---------- Apply: Articles ----------
 
+// Parses blog handle out of a Resource.raw JSON blob the scanner saved.
+// Returns null if the article has no blog reference (shouldn't happen for
+// articles, but we defend against bad data).
+function blogHandleOf(rawJson: string | null | undefined): string | null {
+  if (!rawJson) return null;
+  try {
+    const parsed = JSON.parse(rawJson);
+    const handle = parsed?.blog?.handle;
+    return typeof handle === "string" && handle ? handle : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
   const cfg = await loadOptimizerConfig();
   const shop = await getShop();
@@ -402,19 +416,33 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     include: { images: true },
     take: 5000,
   });
+  // Excluded blog handles get their existing metafield CLEARED instead of
+  // overwritten, so another tool (the autoblog) can own that article's
+  // schema without competing with leftover JSON-LD from this app.
+  const exclusions = new Set(
+    (cfg.jsonLd.other.articleBlogExclusions ?? []).map((h) => h.toLowerCase()),
+  );
   const job = await startJob("json_ld_articles", articles.length);
   try {
     let saved = 0;
+    let cleared = 0;
     let failed = 0;
     for (let i = 0; i < articles.length; i++) {
       const a = articles[i];
+      const handle = blogHandleOf(a.raw)?.toLowerCase();
+      const excluded = handle !== null && handle !== undefined && exclusions.has(handle);
       try {
-        const article = generateArticleSchema(a, shop);
-        const out = cfg.jsonLd.other.breadcrumb
-          ? [article, buildBreadcrumbForResource(a, shop)]
-          : article;
-        await setJsonLd(a.id, out as Record<string, unknown>);
-        saved++;
+        if (excluded) {
+          await clearJsonLd(a.id);
+          cleared++;
+        } else {
+          const article = generateArticleSchema(a, shop);
+          const out = cfg.jsonLd.other.breadcrumb
+            ? [article, buildBreadcrumbForResource(a, shop)]
+            : article;
+          await setJsonLd(a.id, out as Record<string, unknown>);
+          saved++;
+        }
       } catch {
         failed++;
       }
@@ -424,7 +452,7 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     revalidatePath("/optimize/json-ld");
     return {
       ok: failed === 0,
-      message: `Saved ${saved}, failed ${failed}`,
+      message: `Saved ${saved}, cleared ${cleared}, failed ${failed}`,
       processed: articles.length,
       saved,
       failed,
@@ -436,6 +464,28 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     });
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
   }
+}
+
+// Returns the distinct blog handles found across all scanned articles, with
+// an article count per blog. Powers the "exclude blogs from schema" UI so
+// the user can see exactly which blogs exist without typing handles by hand.
+export async function listArticleBlogHandles(): Promise<
+  Array<{ handle: string; count: number }>
+> {
+  const articles = await prisma.resource.findMany({
+    where: { type: "article" },
+    select: { raw: true },
+    take: 5000,
+  });
+  const counts = new Map<string, number>();
+  for (const a of articles) {
+    const h = blogHandleOf(a.raw);
+    if (!h) continue;
+    counts.set(h, (counts.get(h) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([handle, count]) => ({ handle, count }))
+    .sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
 // ---------- Apply: Site-wide schemas (Other tab) ----------

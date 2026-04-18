@@ -67,6 +67,13 @@ export type OtherJsonLdConfig = {
   article: boolean;
   blog: boolean;
   breadcrumb: boolean;
+  // Blog handles (e.g. "emf", "fashion") whose articles should NOT receive
+  // Article/Breadcrumb schema from this app. Intended for blogs whose schema
+  // is owned by another tool (the Proteck'd autoblog emits richer HowTo /
+  // Speakable / Person schema, so we stay out of its way). The "Update all
+  // articles" action also CLEARS the metafield on these articles, so any
+  // previously-written JSON-LD stops competing with the autoblog's output.
+  articleBlogExclusions: string[];
 };
 
 export type JsonLdConfig = {
@@ -131,5 +138,6 @@ export const DEFAULT_JSON_LD_CONFIG: JsonLdConfig = {
     article: true,
     blog: true,
     breadcrumb: true,
+    articleBlogExclusions: [],
   },
 };

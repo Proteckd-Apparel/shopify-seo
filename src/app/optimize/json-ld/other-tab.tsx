@@ -9,7 +9,13 @@ import {
 import type { OtherJsonLdConfig } from "@/lib/json-ld-config";
 import { BulkProgressBar } from "@/components/bulk-progress-bar";
 
-const TYPES: Array<{ key: keyof OtherJsonLdConfig; label: string; hint: string }> = [
+// Only the boolean toggles — excludes articleBlogExclusions (string[]), which
+// has its own dedicated UI block below the toggle list.
+type BooleanKey = {
+  [K in keyof OtherJsonLdConfig]: OtherJsonLdConfig[K] extends boolean ? K : never;
+}[keyof OtherJsonLdConfig];
+
+const TYPES: Array<{ key: BooleanKey; label: string; hint: string }> = [
   { key: "website", label: "WebSite", hint: "Site search action for Google" },
   { key: "organization", label: "Organization", hint: "Brand identity / logo" },
   { key: "article", label: "Article", hint: "Blog article schema" },
@@ -17,14 +23,27 @@ const TYPES: Array<{ key: keyof OtherJsonLdConfig; label: string; hint: string }
   { key: "breadcrumb", label: "Breadcrumb", hint: "Page hierarchy for Google" },
 ];
 
-export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
+export function OtherTab({
+  initial,
+  blogHandles,
+}: {
+  initial: OtherJsonLdConfig;
+  blogHandles: Array<{ handle: string; count: number }>;
+}) {
   const [cfg, setCfg] = useState(initial);
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [applyingArticles, setApplyingArticles] = useState(false);
 
-  function patch(k: keyof OtherJsonLdConfig, v: boolean) {
+  function patch(k: BooleanKey, v: boolean) {
     setCfg({ ...cfg, [k]: v });
+  }
+
+  function toggleBlogExclusion(handle: string) {
+    const current = new Set(cfg.articleBlogExclusions);
+    if (current.has(handle)) current.delete(handle);
+    else current.add(handle);
+    setCfg({ ...cfg, articleBlogExclusions: Array.from(current).sort() });
   }
 
   function save() {
@@ -51,15 +70,21 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
   }
 
   function applyArticles() {
-    if (
-      !confirm(
-        "Apply Article + Breadcrumb schema to ALL blog articles? Writes a metafield on every article.",
-      )
-    )
-      return;
+    const excluded = cfg.articleBlogExclusions.length;
+    const warn = excluded
+      ? `Apply Article + Breadcrumb schema to articles? Articles in ${excluded} excluded blog(s) will have their existing schema CLEARED so another tool (e.g. the autoblog) can own them.`
+      : "Apply Article + Breadcrumb schema to ALL blog articles? Writes a metafield on every article.";
+    if (!confirm(warn)) return;
     setMsg(null);
     setApplyingArticles(true);
     start(async () => {
+      // Save the exclusion list first so the bulk action sees it.
+      const s = await saveJsonLdConfig({ other: cfg });
+      if (!s.ok) {
+        setMsg(s.message);
+        setApplyingArticles(false);
+        return;
+      }
       const r = await applyArticleSchemaToAll();
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
       setApplyingArticles(false);
@@ -98,6 +123,61 @@ export function OtherTab({ initial }: { initial: OtherJsonLdConfig }) {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-lg">
+        <div className="px-5 py-3 border-b border-slate-100">
+          <div className="text-xs uppercase tracking-wider text-slate-600 font-semibold">
+            Skip schema on these blogs
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            Useful when another tool owns the schema for certain blogs (e.g.
+            the autoblog emits richer HowTo / Speakable / Person schema for
+            its posts). Checked blogs will have their{" "}
+            <code className="font-mono bg-slate-100 px-1 rounded">
+              custom.json_ld
+            </code>{" "}
+            metafield CLEARED the next time you click <em>Update all articles</em>,
+            so duplicate JSON-LD stops competing with the autoblog's output.
+          </div>
+        </div>
+        {blogHandles.length === 0 ? (
+          <div className="px-5 py-4 text-sm text-slate-500">
+            No blog articles scanned yet. Run a Scan first to populate this list.
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {blogHandles.map((b) => {
+              const excluded = cfg.articleBlogExclusions.includes(b.handle);
+              return (
+                <li
+                  key={b.handle}
+                  className="flex items-center justify-between px-5 py-2.5"
+                >
+                  <label className="flex items-center gap-3 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={excluded}
+                      onChange={() => toggleBlogExclusion(b.handle)}
+                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                    <span className="text-sm font-mono text-slate-900">
+                      {b.handle}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      ({b.count} article{b.count === 1 ? "" : "s"})
+                    </span>
+                  </label>
+                  {excluded && (
+                    <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                      will clear
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       <div className="bg-white border border-slate-200 rounded-lg p-5">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Code2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { loadOptimizerConfig } from "@/lib/optimizer-config";
+import { listArticleBlogHandles } from "./actions";
 import { ProductsTab } from "./products-tab";
 import { CollectionsTab } from "./collections-tab";
 import { LocalBusinessTab } from "./localbusiness-tab";
@@ -25,6 +26,9 @@ export default async function JsonLdPage({
   const sp = await searchParams;
   const tab = sp.tab ?? "products";
   const cfg = await loadOptimizerConfig();
+  // Only fetch blog handles when the Other tab is active — it's a DB scan
+  // over every article and nobody on other tabs needs the list.
+  const blogHandles = tab === "other" ? await listArticleBlogHandles() : [];
 
   return (
     <div>
@@ -44,7 +48,9 @@ export default async function JsonLdPage({
                 ? cfg.jsonLd.collections.enabled
                 : t.key === "localbusiness"
                   ? cfg.jsonLd.localBusiness.enabled
-                  : Object.values(cfg.jsonLd.other).some((v) => v);
+                  : Object.values(cfg.jsonLd.other).some(
+                      (v) => typeof v === "boolean" && v,
+                    );
           return (
             <Link
               key={t.key}
@@ -73,7 +79,9 @@ export default async function JsonLdPage({
       {tab === "localbusiness" && (
         <LocalBusinessTab initial={cfg.jsonLd.localBusiness} />
       )}
-      {tab === "other" && <OtherTab initial={cfg.jsonLd.other} />}
+      {tab === "other" && (
+        <OtherTab initial={cfg.jsonLd.other} blogHandles={blogHandles} />
+      )}
     </div>
   );
 }
