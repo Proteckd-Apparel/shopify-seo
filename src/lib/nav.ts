@@ -5,6 +5,7 @@
 import {
   Activity,
   AlertCircle,
+  Bot,
   Boxes,
   Brain,
   CheckSquare,
@@ -402,6 +403,12 @@ export const NAV: NavSection[] = [
         description: "Where your visitors come from.",
         icon: TrendingUp,
         premium: true,
+      },
+      {
+        slug: "robots-analysis",
+        title: "Robots.txt Analysis",
+        description: "Check whether AI crawlers can reach your content.",
+        icon: Bot,
       },
       {
         slug: "robots-txt",
