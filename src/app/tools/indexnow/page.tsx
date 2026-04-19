@@ -1,14 +1,15 @@
 import { Zap, ExternalLink } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
-import { indexNowKeyLocation } from "@/lib/indexnow";
+import { indexNowKeyLocation, indexNowKeyProxyPath } from "@/lib/indexnow";
 import { IndexNowControls } from "./controls";
 
 export const dynamic = "force-dynamic";
 
 export default async function IndexNowPage() {
   const s = await prisma.settings.findUnique({ where: { id: 1 } });
-  const keyLocation = indexNowKeyLocation();
+  const keyLocation = await indexNowKeyLocation();
+  const proxyPath = indexNowKeyProxyPath();
   const keyPresent = Boolean(s?.indexNowKey);
   const lastSubmittedAt = s?.indexNowLastSubmittedAt;
   const lastCount = s?.indexNowLastSubmittedCount ?? null;
@@ -40,7 +41,7 @@ export default async function IndexNowPage() {
           <dd className={enabled ? "text-emerald-600" : "text-slate-600"}>
             {enabled ? "Yes" : "No"}
           </dd>
-          <dt className="text-slate-500">Key file</dt>
+          <dt className="text-slate-500">Public key URL</dt>
           <dd>
             {keyPresent && keyLocation ? (
               <a
@@ -54,12 +55,12 @@ export default async function IndexNowPage() {
               </a>
             ) : keyPresent && !keyLocation ? (
               <span className="text-amber-600 text-xs">
-                Set SHOPIFY_APP_PROXY_URL in Railway env so Bing can reach the
-                key file.
+                Set a Storefront domain in Settings so Bing can reach the key
+                file.
               </span>
             ) : (
               <span className="text-slate-500 text-xs">
-                Not generated yet — run a scan or click Submit now.
+                Not generated yet — click Submit now.
               </span>
             )}
           </dd>
@@ -80,17 +81,30 @@ export default async function IndexNowPage() {
 
       <IndexNowControls enabled={enabled} />
 
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-3xl text-xs text-amber-900 mt-4">
-        <strong>Setup:</strong> the key file is served via the existing
-        App Proxy, so no new Shopify redirect is needed. Just make sure{" "}
-        <code className="bg-amber-100 px-1 rounded font-mono">
-          SHOPIFY_APP_PROXY_URL
-        </code>{" "}
-        is set in Railway (e.g.{" "}
-        <code className="bg-amber-100 px-1 rounded font-mono">
-          https://www.proteckd.com/apps/proteckd-seo
-        </code>
-        ).
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-3xl text-xs text-amber-900 mt-4 space-y-2">
+        <div>
+          <strong>Setup (one-time):</strong> Bing&apos;s IndexNow validator
+          scopes accepted URLs to the key file&apos;s path, so the key must
+          appear at the root of your domain. Add a Shopify URL Redirect:
+        </div>
+        <ul className="list-disc pl-5">
+          <li>
+            From:{" "}
+            <code className="bg-amber-100 px-1 rounded font-mono">
+              /indexnow.txt
+            </code>
+          </li>
+          <li>
+            To:{" "}
+            <code className="bg-amber-100 px-1 rounded font-mono">
+              /apps/proteckd-seo{proxyPath}
+            </code>
+          </li>
+        </ul>
+        <div>
+          Because the redirect target stays constant, key rotations never
+          require updating the Shopify redirect.
+        </div>
       </div>
     </div>
   );

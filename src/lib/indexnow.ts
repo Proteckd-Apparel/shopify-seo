@@ -28,13 +28,23 @@ export async function getOrCreateIndexNowKey(): Promise<string> {
   return key;
 }
 
-// URL where the key file is served on the merchant's public domain.
-// Uses SHOPIFY_APP_PROXY_URL (same env var the sitemap uses) so all proxy
-// paths live under one setting.
-export function indexNowKeyLocation(): string | null {
-  const proxy = process.env.SHOPIFY_APP_PROXY_URL?.replace(/\/$/, "");
-  if (!proxy) return null;
-  return `${proxy}/feeds/indexnow-key.txt`;
+// Public URL we claim the key file is at. Must sit at the storefront root
+// (or a parent of every submitted URL) because Bing's IndexNow validator
+// scopes accepted URLs to the keyLocation's path. A stable /indexnow.txt
+// path means the Shopify URL Redirect only needs to be set up once and
+// survives key rotations.
+export async function indexNowKeyLocation(): Promise<string | null> {
+  const s = await prisma.settings.findUnique({ where: { id: 1 } });
+  const publicDomain = s?.storefrontDomain?.trim() || s?.shopDomain;
+  if (!publicDomain) return null;
+  return `https://${publicDomain.replace(/^https?:\/\//, "")}/indexnow.txt`;
+}
+
+// Where the key file is actually served inside the app (behind the App
+// Proxy). Surfaced on the tools page so the merchant can construct the
+// Shopify URL Redirect target: /indexnow.txt → /apps/<subpath>/feeds/indexnow-key.txt
+export function indexNowKeyProxyPath(): string {
+  return "/feeds/indexnow-key.txt";
 }
 
 type ArticleRawBlog = {
@@ -92,13 +102,13 @@ export async function submitUrlsToIndexNow(urls: string[]): Promise<SubmitResult
     return { submitted: 0, batches: 0, ok: true };
   }
   const key = s.indexNowKey ?? (await getOrCreateIndexNowKey());
-  const keyLocation = indexNowKeyLocation();
+  const keyLocation = await indexNowKeyLocation();
   if (!keyLocation) {
     return {
       submitted: 0,
       batches: 0,
       ok: false,
-      error: "SHOPIFY_APP_PROXY_URL env not set; key file isn't reachable.",
+      error: "Set a storefront domain in Settings before submitting.",
     };
   }
 
