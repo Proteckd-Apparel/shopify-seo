@@ -103,47 +103,63 @@ export default async function PromptTrackingPage() {
                   <PromptRowActions id={p.id} enabled={p.enabled} />
                 </div>
                 {p.results.length > 0 && (
-                  <ul className="mt-2 space-y-1 text-xs">
+                  <ul className="mt-2 space-y-2 text-xs">
                     {p.results.map((r) => {
                       const providerLabel =
                         PROVIDERS.find((x) => x.id === r.provider)?.label ||
                         r.provider;
+                      const fullText = r.response ?? r.error ?? "";
+                      const preview = fullText.slice(0, 120);
+                      const hasMore = fullText.length > 120;
                       return (
                         <li
                           key={r.id}
-                          className="flex items-start gap-2 border-t border-slate-100 pt-1 first:border-t-0 first:pt-0"
+                          className="border-t border-slate-100 pt-2 first:border-t-0 first:pt-0"
                         >
-                          <span className="text-slate-400 font-mono whitespace-nowrap">
-                            {new Date(r.runAt).toISOString().slice(0, 10)}
-                          </span>
-                          <span className="text-slate-600 min-w-[90px]">
-                            {providerLabel}
-                          </span>
-                          {r.status === "error" ? (
-                            <span className="text-red-600 flex items-center gap-1">
-                              <XCircle className="w-3 h-3" /> error:{" "}
-                              {(r.error ?? "").slice(0, 80)}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-slate-400 font-mono whitespace-nowrap">
+                              {new Date(r.runAt).toISOString().slice(0, 10)}
                             </span>
-                          ) : r.brandMentioned ? (
-                            <span className="text-emerald-700 flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> mentioned
-                              {r.matchedKeyword && (
-                                <span className="text-slate-500">
-                                  (“{r.matchedKeyword}”)
-                                </span>
-                              )}
+                            <span className="text-slate-600 min-w-[90px]">
+                              {providerLabel}
                             </span>
-                          ) : (
-                            <span className="text-slate-500 flex items-center gap-1">
-                              <XCircle className="w-3 h-3" /> no mention
-                            </span>
-                          )}
-                          <span
-                            className="text-slate-400 truncate flex-1"
-                            title={r.response ?? ""}
-                          >
-                            {(r.response ?? "").slice(0, 120)}
-                          </span>
+                            {r.status === "error" ? (
+                              <span className="text-red-600 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" /> error
+                              </span>
+                            ) : r.brandMentioned ? (
+                              <span className="text-emerald-700 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> mentioned
+                                {r.matchedKeyword && (
+                                  <span className="text-slate-500">
+                                    (“{r.matchedKeyword}”)
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" /> no mention
+                              </span>
+                            )}
+                          </div>
+                          {fullText &&
+                            (hasMore ? (
+                              <details className="mt-1">
+                                <summary className="cursor-pointer text-slate-500 hover:text-slate-700">
+                                  {preview}…{" "}
+                                  <span className="text-indigo-600">
+                                    show full response
+                                  </span>
+                                </summary>
+                                <pre className="mt-2 bg-slate-50 border border-slate-100 rounded p-3 whitespace-pre-wrap font-sans text-slate-700">
+                                  {fullText}
+                                </pre>
+                              </details>
+                            ) : (
+                              <div className="mt-1 text-slate-500">
+                                {fullText}
+                              </div>
+                            ))}
                         </li>
                       );
                     })}
