@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { OptimizerConfig, ResourceConfig } from "@/lib/optimizer-config";
-import { saveConfig } from "./actions";
+import { disableAllOverwrites, saveConfig } from "./actions";
 
 type ResourceKey = "products" | "collections" | "articles" | "pages";
 
@@ -54,6 +54,55 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
     });
   }
 
+  function disableOverwrites() {
+    if (
+      !confirm(
+        "Turn OFF every OVERWRITE toggle across products, collections, articles, and pages?\n\nResult: auto-optimize will only fill empty fields. Existing meta titles, descriptions, alt texts, and HTML text stay untouched. This is the recommended setup for ongoing automation.",
+      )
+    )
+      return;
+    setMsg(null);
+    startTransition(async () => {
+      const r = await disableAllOverwrites();
+      setMsg(r.message);
+      if (r.ok) {
+        // Mirror the saved state into local form state so the toggles
+        // visually update without a page refresh.
+        setCfg((c) => ({
+          ...c,
+          products: {
+            ...c.products,
+            metaTitlesOverwrite: false,
+            metaDescriptionsOverwrite: false,
+            altTextsOverwrite: false,
+            htmlTextOverwrite: false,
+          },
+          collections: {
+            ...c.collections,
+            metaTitlesOverwrite: false,
+            metaDescriptionsOverwrite: false,
+            altTextsOverwrite: false,
+            htmlTextOverwrite: false,
+          },
+          articles: {
+            ...c.articles,
+            metaTitlesOverwrite: false,
+            metaDescriptionsOverwrite: false,
+            altTextsOverwrite: false,
+            htmlTextOverwrite: false,
+          },
+          pages: {
+            ...c.pages,
+            metaTitlesOverwrite: false,
+            metaDescriptionsOverwrite: false,
+            altTextsOverwrite: false,
+            htmlTextOverwrite: false,
+          },
+        }));
+      }
+    });
+  }
+
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Master switch */}
@@ -72,6 +121,31 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
           checked={cfg.masterAutoOptimize}
           onChange={(v) => setCfg((c) => ({ ...c, masterAutoOptimize: v }))}
         />
+      </div>
+
+      {/* Quick-action: disable overwrites everywhere. Recommended setup
+          for ongoing auto-optimize: empty fields get AI-filled on new
+          products / posts; existing curated copy is never touched. */}
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <div className="font-semibold text-slate-900 text-sm">
+            Fill missing only (don&apos;t overwrite existing)
+          </div>
+          <div className="text-xs text-slate-600 mt-1">
+            Turns off every OVERWRITE toggle across all four resource
+            types. Auto-optimize will then only fill empty fields on
+            new resources and skip anything you&apos;ve already set.
+            Recommended once your catalog is curated.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={disableOverwrites}
+          disabled={pending}
+          className="ml-4 shrink-0 px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 disabled:opacity-60"
+        >
+          Disable all overwrite
+        </button>
       </div>
 
       {/* AI brand voice */}
