@@ -107,26 +107,31 @@ export type BulkResult = {
 
 export async function bulkGenerateMetaTitles(
   type: string,
-  onlyMissing = true,
+  scope: boolean | "missing" | "short" = true,
 ): Promise<BulkResult> {
-  return bulkResource(type, "seoTitle", onlyMissing);
+  return bulkResource(type, "seoTitle", scope);
 }
 
 export async function bulkGenerateMetaDescriptions(
   type: string,
-  onlyMissing = true,
+  scope: boolean | "missing" | "short" = true,
 ): Promise<BulkResult> {
-  return bulkResource(type, "seoDescription", onlyMissing);
+  return bulkResource(type, "seoDescription", scope);
 }
 
 async function bulkResource(
   type: string,
   field: "seoTitle" | "seoDescription",
-  onlyMissing: boolean,
+  scope: boolean | "missing" | "short",
 ): Promise<BulkResult> {
   let processed = 0;
   let saved = 0;
   let failed = 0;
+
+  // seoTitle short = under 25 chars, seoDescription short = under 70 chars.
+  const SHORT_THRESHOLD = field === "seoTitle" ? 25 : 70;
+  const onlyMissing = scope === true || scope === "missing";
+  const onlyShort = scope === "short";
 
   const where: Record<string, unknown> = { type };
   if (onlyMissing) {
@@ -136,10 +141,20 @@ async function bulkResource(
     ];
   }
 
-  const resources = await prisma.resource.findMany({
+  let resources = await prisma.resource.findMany({
     where,
-    take: 200, // safety cap per click
+    take: onlyShort ? 5000 : 200,
   });
+
+  if (onlyShort) {
+    // Prisma lacks LENGTH() on SQLite, so filter in-memory then cap to 200.
+    resources = resources
+      .filter((r) => {
+        const v = (r[field] as string | null) ?? "";
+        return v.length > 0 && v.length < SHORT_THRESHOLD;
+      })
+      .slice(0, 200);
+  }
 
   for (const r of resources) {
     processed++;

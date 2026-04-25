@@ -111,10 +111,14 @@ export default async function MetaDescriptionsPage({
         </ModeTab>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
         <BulkButton
           label={`Generate missing meta descriptions (${type})`}
           action={bulkGenerateMetaDescriptions.bind(null, type, true)}
+        />
+        <BulkButton
+          label={`Generate too-short meta descriptions (${type})`}
+          action={bulkGenerateMetaDescriptions.bind(null, type, "short")}
         />
       </div>
 

@@ -110,10 +110,14 @@ export default async function MetaTitlesPage({
         </ModeTab>
       </div>
 
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
         <BulkButton
           label={`Generate missing meta titles (${type})`}
           action={bulkGenerateMetaTitles.bind(null, type, true)}
+        />
+        <BulkButton
+          label={`Generate too-short meta titles (${type})`}
+          action={bulkGenerateMetaTitles.bind(null, type, "short")}
         />
       </div>
 
