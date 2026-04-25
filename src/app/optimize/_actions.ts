@@ -149,23 +149,23 @@ async function bulkResource(
   }
 
   // orderBy updatedAt asc ensures repeat clicks PROGRESS through the
-  // remainder instead of re-hitting the same 200 rows. After each
+  // remainder instead of re-hitting the same 1000 rows. After each
   // successful update Resource.updatedAt = now, so processed rows sink
   // to the bottom of the queue and untouched rows bubble up.
   let resources = await prisma.resource.findMany({
     where,
     orderBy: { updatedAt: "asc" },
-    take: onlyShort ? 5000 : 200,
+    take: onlyShort ? 5000 : 1000,
   });
 
   if (onlyShort) {
-    // Prisma lacks LENGTH() on SQLite, so filter in-memory then cap to 200.
+    // Prisma lacks LENGTH() on SQLite, so filter in-memory then cap to 1000.
     resources = resources
       .filter((r) => {
         const v = (r[field] as string | null) ?? "";
         return v.length > 0 && v.length < SHORT_THRESHOLD;
       })
-      .slice(0, 200);
+      .slice(0, 1000);
   }
 
   // Track this run as a JobRun so the BulkProgressBar (and the global
@@ -213,7 +213,7 @@ async function bulkResource(
     saved,
     failed,
     message: `Processed ${processed} (saved ${saved}, failed ${failed}). ${
-      processed === 200 ? "Hit the 200-row safety cap — click again." : ""
+      processed === 1000 ? "Hit the 1000-row safety cap — click again." : ""
     }`,
   };
 }
@@ -231,7 +231,7 @@ export async function bulkGenerateAltText(
       ? { OR: [{ altText: null }, { altText: "" }] }
       : undefined,
     include: { resource: true },
-    take: 200,
+    take: 1000,
   });
 
   const job = await startJob("alt_text", images.length);
@@ -273,7 +273,7 @@ export async function bulkGenerateAltText(
     message: `Processed ${processed} (saved ${saved}, failed ${failed}). ${
       firstError ? `First error: ${firstError}. ` : ""
     }${
-      processed === 200 ? "Hit the 200-row safety cap — click again." : ""
+      processed === 1000 ? "Hit the 1000-row safety cap — click again." : ""
     }`,
   };
 }

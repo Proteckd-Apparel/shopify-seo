@@ -35,10 +35,10 @@ export function BulkButton({
   const [pending, start] = useTransition();
   const [result, setResult] = useState<BulkResult | null>(null);
 
-  // Bulk actions cap at 200 per click (see _actions.ts), so the worst
-  // case is min(estimatedRows, 200). Show that as the quote.
+  // Bulk actions cap at 1000 per click (see _actions.ts), so the worst
+  // case is min(estimatedRows, 1000). Show that as the quote.
   const quoteRows = costOp
-    ? Math.min(estimatedRows ?? 200, 200)
+    ? Math.min(estimatedRows ?? 1000, 1000)
     : 0;
   const quoteUsd =
     costOp && quoteRows > 0 ? estimateBulkCost(costOp, quoteRows) : null;
