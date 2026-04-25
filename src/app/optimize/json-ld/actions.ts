@@ -216,6 +216,7 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
     const collectionMap = await buildProductTypeToCollectionMap();
     let saved = 0;
     let failed = 0;
+    const sampleErrors: string[] = [];
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
       try {
@@ -248,16 +249,24 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
         );
         await setJsonLd(p.id, schema);
         saved++;
-      } catch {
+      } catch (e) {
         failed++;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[json-ld products] ${p.handle ?? p.id}: ${msg}`);
+        if (sampleErrors.length < 3) {
+          sampleErrors.push(`${p.handle ?? p.id}: ${msg}`);
+        }
       }
       await setProgress(job.id, i + 1);
     }
-    await finishJob(job.id, { ok: failed === 0 });
+    const errorSummary = failed > 0
+      ? `${failed} failed. First: ${sampleErrors.join(" | ")}`
+      : undefined;
+    await finishJob(job.id, { ok: failed === 0, error: errorSummary });
     revalidatePath("/optimize/json-ld");
     return {
       ok: failed === 0,
-      message: `Saved ${saved}, failed ${failed}`,
+      message: `Saved ${saved}, failed ${failed}${errorSummary ? ` — ${errorSummary}` : ""}`,
       processed: products.length,
       saved,
       failed,
@@ -285,6 +294,7 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
   try {
     let saved = 0;
     let failed = 0;
+    const sampleErrors: string[] = [];
     for (let i = 0; i < collections.length; i++) {
       const c = collections[i];
       try {
@@ -296,16 +306,24 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
         );
         await setJsonLd(c.id, schema as Record<string, unknown>);
         saved++;
-      } catch {
+      } catch (e) {
         failed++;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[json-ld collections] ${c.handle ?? c.id}: ${msg}`);
+        if (sampleErrors.length < 3) {
+          sampleErrors.push(`${c.handle ?? c.id}: ${msg}`);
+        }
       }
       await setProgress(job.id, i + 1);
     }
-    await finishJob(job.id, { ok: failed === 0 });
+    const errorSummary = failed > 0
+      ? `${failed} failed. First: ${sampleErrors.join(" | ")}`
+      : undefined;
+    await finishJob(job.id, { ok: failed === 0, error: errorSummary });
     revalidatePath("/optimize/json-ld");
     return {
       ok: failed === 0,
-      message: `Saved ${saved}, failed ${failed}`,
+      message: `Saved ${saved}, failed ${failed}${errorSummary ? ` — ${errorSummary}` : ""}`,
       processed: collections.length,
       saved,
       failed,
@@ -442,6 +460,7 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     let cleared = 0;
     let coveredOld = 0;
     let failed = 0;
+    const sampleErrors: string[] = [];
     for (let i = 0; i < articles.length; i++) {
       const a = articles[i];
       const handle = blogHandleOf(a.raw)?.toLowerCase();
@@ -466,17 +485,26 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
           if (inExcludedBlog) coveredOld++;
           else saved++;
         }
-      } catch {
+      } catch (e) {
         failed++;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[json-ld articles] ${a.handle ?? a.id}: ${msg}`);
+        if (sampleErrors.length < 3) {
+          sampleErrors.push(`${a.handle ?? a.id}: ${msg}`);
+        }
       }
       await setProgress(job.id, i + 1);
     }
-    await finishJob(job.id, { ok: failed === 0 });
+    const errorSummary = failed > 0
+      ? `${failed} failed. First: ${sampleErrors.join(" | ")}`
+      : undefined;
+    await finishJob(job.id, { ok: failed === 0, error: errorSummary });
     revalidatePath("/optimize/json-ld");
     const parts = [`Saved ${saved}`];
     if (coveredOld > 0) parts.push(`covered ${coveredOld} older posts in excluded blogs`);
     if (cleared > 0) parts.push(`cleared ${cleared}`);
     if (failed > 0) parts.push(`failed ${failed}`);
+    if (errorSummary) parts.push(errorSummary);
     return {
       ok: failed === 0,
       message: parts.join(", "),
