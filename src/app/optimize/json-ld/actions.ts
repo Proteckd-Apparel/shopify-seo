@@ -87,6 +87,24 @@ const THEME_FILES_TO_SCAN = [
   "snippets/product-template-variables.liquid",
 ];
 
+// Shopify returns INVALID_VALUE "Owner does not exist" when a metafield write
+// targets a product/collection/article GID Shopify no longer has. The local
+// Resource row is a stale cache from a previous scan — the right move is to
+// drop it from our DB and treat it as skipped, not a failure.
+function isStaleOwnerError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return /Owner does not exist/i.test(msg);
+}
+
+// Best-effort prune of a stale local Resource row. Image rows cascade via the
+// schema's onDelete. If this fails (e.g. concurrent delete), swallow it —
+// the next scan will reconcile.
+async function pruneStaleResource(id: string): Promise<void> {
+  try {
+    await prisma.resource.delete({ where: { id } });
+  } catch {}
+}
+
 async function getShop(): Promise<{ domain: string; name: string }> {
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
   let name = settings?.shopDomain ?? "";
@@ -235,6 +253,7 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
     const collectionMap = await buildProductTypeToCollectionMap();
     let saved = 0;
     let failed = 0;
+    let staleSkipped = 0;
     const sampleErrors: string[] = [];
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
@@ -269,11 +288,19 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
         await setJsonLd(p.id, schema);
         saved++;
       } catch (e) {
-        failed++;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`[json-ld products] ${p.handle ?? p.id}: ${msg}`);
-        if (sampleErrors.length < 3) {
-          sampleErrors.push(`${p.handle ?? p.id}: ${msg}`);
+        if (isStaleOwnerError(e)) {
+          staleSkipped++;
+          await pruneStaleResource(p.id);
+          console.warn(
+            `[json-ld products] pruned stale ${p.handle ?? p.id} (no longer in Shopify)`,
+          );
+        } else {
+          failed++;
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`[json-ld products] ${p.handle ?? p.id}: ${msg}`);
+          if (sampleErrors.length < 3) {
+            sampleErrors.push(`${p.handle ?? p.id}: ${msg}`);
+          }
         }
       }
       await setProgress(job.id, i + 1);
@@ -283,9 +310,13 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
       : undefined;
     await finishJob(job.id, { ok: failed === 0, error: errorSummary });
     revalidatePath("/optimize/json-ld");
+    const parts = [`Saved ${saved}`];
+    if (staleSkipped > 0) parts.push(`pruned ${staleSkipped} stale (deleted in Shopify)`);
+    if (failed > 0) parts.push(`failed ${failed}`);
+    if (errorSummary) parts.push(errorSummary);
     return {
       ok: failed === 0,
-      message: `Saved ${saved}, failed ${failed}${errorSummary ? ` — ${errorSummary}` : ""}`,
+      message: parts.join(", "),
       processed: products.length,
       saved,
       failed,
@@ -313,6 +344,7 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
   try {
     let saved = 0;
     let failed = 0;
+    let staleSkipped = 0;
     const sampleErrors: string[] = [];
     for (let i = 0; i < collections.length; i++) {
       const c = collections[i];
@@ -326,11 +358,19 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
         await setJsonLd(c.id, schema as Record<string, unknown>);
         saved++;
       } catch (e) {
-        failed++;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`[json-ld collections] ${c.handle ?? c.id}: ${msg}`);
-        if (sampleErrors.length < 3) {
-          sampleErrors.push(`${c.handle ?? c.id}: ${msg}`);
+        if (isStaleOwnerError(e)) {
+          staleSkipped++;
+          await pruneStaleResource(c.id);
+          console.warn(
+            `[json-ld collections] pruned stale ${c.handle ?? c.id} (no longer in Shopify)`,
+          );
+        } else {
+          failed++;
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`[json-ld collections] ${c.handle ?? c.id}: ${msg}`);
+          if (sampleErrors.length < 3) {
+            sampleErrors.push(`${c.handle ?? c.id}: ${msg}`);
+          }
         }
       }
       await setProgress(job.id, i + 1);
@@ -340,9 +380,13 @@ export async function applyCollectionSchemaToAll(): Promise<ApplyResult> {
       : undefined;
     await finishJob(job.id, { ok: failed === 0, error: errorSummary });
     revalidatePath("/optimize/json-ld");
+    const parts = [`Saved ${saved}`];
+    if (staleSkipped > 0) parts.push(`pruned ${staleSkipped} stale (deleted in Shopify)`);
+    if (failed > 0) parts.push(`failed ${failed}`);
+    if (errorSummary) parts.push(errorSummary);
     return {
       ok: failed === 0,
-      message: `Saved ${saved}, failed ${failed}${errorSummary ? ` — ${errorSummary}` : ""}`,
+      message: parts.join(", "),
       processed: collections.length,
       saved,
       failed,
@@ -479,6 +523,7 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     let cleared = 0;
     let coveredOld = 0;
     let failed = 0;
+    let staleSkipped = 0;
     const sampleErrors: string[] = [];
     for (let i = 0; i < articles.length; i++) {
       const a = articles[i];
@@ -505,11 +550,19 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
           else saved++;
         }
       } catch (e) {
-        failed++;
-        const msg = e instanceof Error ? e.message : String(e);
-        console.error(`[json-ld articles] ${a.handle ?? a.id}: ${msg}`);
-        if (sampleErrors.length < 3) {
-          sampleErrors.push(`${a.handle ?? a.id}: ${msg}`);
+        if (isStaleOwnerError(e)) {
+          staleSkipped++;
+          await pruneStaleResource(a.id);
+          console.warn(
+            `[json-ld articles] pruned stale ${a.handle ?? a.id} (no longer in Shopify)`,
+          );
+        } else {
+          failed++;
+          const msg = e instanceof Error ? e.message : String(e);
+          console.error(`[json-ld articles] ${a.handle ?? a.id}: ${msg}`);
+          if (sampleErrors.length < 3) {
+            sampleErrors.push(`${a.handle ?? a.id}: ${msg}`);
+          }
         }
       }
       await setProgress(job.id, i + 1);
@@ -522,6 +575,7 @@ export async function applyArticleSchemaToAll(): Promise<ApplyResult> {
     const parts = [`Saved ${saved}`];
     if (coveredOld > 0) parts.push(`covered ${coveredOld} older posts in excluded blogs`);
     if (cleared > 0) parts.push(`cleared ${cleared}`);
+    if (staleSkipped > 0) parts.push(`pruned ${staleSkipped} stale (deleted in Shopify)`);
     if (failed > 0) parts.push(`failed ${failed}`);
     if (errorSummary) parts.push(errorSummary);
     return {
