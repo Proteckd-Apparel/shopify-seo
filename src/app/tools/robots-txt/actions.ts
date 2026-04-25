@@ -138,17 +138,21 @@ function buildLiquid(
     byUa.set(r.ua, list);
   }
 
-  const boostBlock = boostImages
-    ? `
-# Boost Google Images
-User-agent: Googlebot-Image
-Allow: /
-Allow: /products/*.jpg$
-Allow: /products/*.jpeg$
-Allow: /products/*.png$
-Allow: /products/*.webp$
-Allow: /products/*.gif$
-`
+  // Boost Google Images: emit explicit Allow rules INSIDE the existing
+  // User-agent: * group (via the per-group loop below) instead of as a
+  // separate Googlebot-Image block. A separate UA block is risky because
+  // Google's matcher uses ONLY the most specific block, which would cause
+  // Googlebot-Image to ignore Shopify's protective Disallows for /admin,
+  // /cart, /checkouts, etc. Adding the Allows inline as part of the *
+  // group keeps the protections AND makes intent explicit.
+  const boostAllowLines = boostImages
+    ? [
+        "Allow: /products/*.jpg$",
+        "Allow: /products/*.jpeg$",
+        "Allow: /products/*.png$",
+        "Allow: /products/*.webp$",
+        "Allow: /products/*.gif$",
+      ].join("\n")
     : "";
 
   // Build a Liquid expression that injects custom rules into the right group.
@@ -195,10 +199,13 @@ ${list
 {% endif -%}`,
   )
   .join("\n")}
+${boostImages ? `{%- if ua == '*' %}
+${boostAllowLines}
+{% endif -%}` : ""}
 {% endfor %}
 Sitemap: https://${storefrontDomain}/sitemap.xml
 ${customSitemaps}
-${boostBlock}`;
+`;
 }
 
 function capitalize(s: string): string {
