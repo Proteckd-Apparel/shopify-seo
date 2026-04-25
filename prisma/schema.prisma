@@ -17,7 +17,9 @@ model Settings {
   shopDomain      String?  // e.g. mystore.myshopify.com
   shopifyToken    String?  // Admin API access token
   anthropicKey    String?
-  judgeMeToken    String?  // Judge.me API token for pulling real reviews
+  judgeMeToken    String?  // (deprecated) Judge.me API token; superseded by reviewsApiBase/reviewsApiKey
+  reviewsApiBase  String?  // Base URL of the self-hosted reviews API, e.g. https://proteckd-verify.up.railway.app
+  reviewsApiKey   String?  // X-Api-Key shared secret for /api/reviews/admin/* endpoints
   replicateToken  String?  // Replicate API token for ESRGAN upscaling
   optimizerRules  String?  // JSON: AI rules / brand voice / instructions
   redirect404ToHome Boolean @default(false) // 404 fallback: bounce to homepage

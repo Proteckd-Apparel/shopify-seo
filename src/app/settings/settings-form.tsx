@@ -12,7 +12,8 @@ export function SettingsForm({
     shopDomain: string;
     shopifyToken: string;
     anthropicKey: string;
-    judgeMeToken: string;
+    reviewsApiBase: string;
+    reviewsApiKey: string;
     replicateToken: string;
     optimizerRules: string;
     storeName: string;
@@ -63,15 +64,29 @@ export function SettingsForm({
       </Section>
 
       <Section
-        title="Judge.me"
-        description="API token for pulling real product reviews into your JSON-LD schema. Get it in Judge.me admin → Settings → API."
+        title="Reviews API (Proteck'd Verify)"
+        description="Self-hosted reviews backend. The JSON-LD generator pulls real average ratings + review bodies from here so structured data uses real customer data. Both fields required to enable."
       >
-        <Field label="API token">
+        <Field
+          label="Base URL"
+          hint="e.g. https://proteckd-verify.up.railway.app — no trailing slash"
+        >
           <input
-            name="judgeMeToken"
+            name="reviewsApiBase"
+            defaultValue={defaults.reviewsApiBase}
+            placeholder="https://proteckd-verify.up.railway.app"
+            className="input"
+          />
+        </Field>
+        <Field
+          label="X-Api-Key (INTERNAL_API_KEY)"
+          hint="Shared secret matching INTERNAL_API_KEY on the verify app."
+        >
+          <input
+            name="reviewsApiKey"
             type="password"
-            defaultValue={defaults.judgeMeToken}
-            placeholder="optional"
+            defaultValue={defaults.reviewsApiKey}
+            placeholder="optional but recommended"
             className="input"
           />
         </Field>

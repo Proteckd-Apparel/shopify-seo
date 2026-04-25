@@ -20,8 +20,12 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
     String(formData.get("shopifyToken") || "").trim() || null;
   const anthropicKey =
     String(formData.get("anthropicKey") || "").trim() || null;
-  const judgeMeToken =
-    String(formData.get("judgeMeToken") || "").trim() || null;
+  const reviewsApiBase =
+    String(formData.get("reviewsApiBase") || "")
+      .trim()
+      .replace(/\/+$/, "") || null;
+  const reviewsApiKey =
+    String(formData.get("reviewsApiKey") || "").trim() || null;
   const replicateToken =
     String(formData.get("replicateToken") || "").trim() || null;
   const optimizerRules =
@@ -42,7 +46,8 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       shopDomain,
       shopifyToken,
       anthropicKey,
-      judgeMeToken,
+      reviewsApiBase,
+      reviewsApiKey,
       replicateToken,
       optimizerRules,
       storeName,
@@ -54,7 +59,8 @@ export async function saveSettings(formData: FormData): Promise<SaveResult> {
       shopDomain,
       shopifyToken,
       anthropicKey,
-      judgeMeToken,
+      reviewsApiBase,
+      reviewsApiKey,
       replicateToken,
       optimizerRules,
       storeName,

@@ -13,7 +13,7 @@ import {
   type FaqItem,
   type RealReviews,
 } from "@/lib/json-ld-generators";
-import { fetchJudgeMeAggregate } from "@/lib/judge-me";
+import { fetchReviewsForHandle } from "@/lib/proteckd-reviews";
 import {
   buildProductTypeToCollectionMap,
   resolvePrimaryCollection,
@@ -104,7 +104,7 @@ export async function saveFaqsForProduct(
 
     let reviews: RealReviews | null = null;
     try {
-      const agg = await fetchJudgeMeAggregate(r.id);
+      const agg = r.handle ? await fetchReviewsForHandle(r.handle) : null;
       if (agg) {
         reviews = {
           rating: agg.rating,
@@ -113,8 +113,8 @@ export async function saveFaqsForProduct(
             rating: rv.rating,
             title: rv.title,
             body: rv.body,
-            reviewer: rv.reviewer.name,
-            date: rv.created_at,
+            reviewer: rv.reviewer,
+            date: rv.date,
           })),
         };
       }

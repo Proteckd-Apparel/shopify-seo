@@ -22,16 +22,30 @@ import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metaf
 import type { JsonLdConfig } from "@/lib/json-ld-config";
 import { clearJsonLd, setJsonLd } from "@/lib/shopify-metafields";
 import {
-  debugJudgeMe,
-  fetchJudgeMeAggregate,
-  fetchJudgeMeBatch,
-  type JudgeMeDebugReport,
-} from "@/lib/judge-me";
+  debugReviewsApi,
+  fetchReviewsForHandle,
+  fetchReviewsBatch,
+  type ReviewsDebugReport,
+} from "@/lib/proteckd-reviews";
 
-export async function debugJudgeMeForResource(
+// Diagnostic for the products tab "Test Reviews" button. Takes a resource
+// id, looks up the product handle, and pings the reviews API for raw
+// summary + by-handle responses so the user can see what the server returns.
+export async function debugReviewsForResource(
   resourceId: string,
-): Promise<JudgeMeDebugReport> {
-  return debugJudgeMe(resourceId);
+): Promise<ReviewsDebugReport> {
+  const r = await prisma.resource.findUnique({
+    where: { id: resourceId },
+    select: { handle: true },
+  });
+  if (!r?.handle) {
+    return {
+      ok: false,
+      message: "Resource has no handle",
+      handle: "",
+    };
+  }
+  return debugReviewsApi(r.handle);
 }
 import type { RealReviews } from "@/lib/json-ld-generators";
 import { finishJob, setProgress, startJob } from "@/lib/bulk-job";
@@ -143,10 +157,11 @@ export async function applyProductSchemaToOne(
     });
     if (!r) return { ok: false, message: "Resource not found" };
     const shop = await getShop();
-    // Best-effort Judge.me lookup; null if not configured or no reviews
+    // Best-effort lookup against the self-hosted reviews API; null if not
+    // configured, no published reviews, or the call fails.
     let reviews: RealReviews | null = null;
     try {
-      const agg = await fetchJudgeMeAggregate(r.id);
+      const agg = r.handle ? await fetchReviewsForHandle(r.handle) : null;
       if (agg) {
         reviews = {
           rating: agg.rating,
@@ -155,8 +170,8 @@ export async function applyProductSchemaToOne(
             rating: rv.rating,
             title: rv.title,
             body: rv.body,
-            reviewer: rv.reviewer.name,
-            date: rv.created_at,
+            reviewer: rv.reviewer,
+            date: rv.date,
           })),
         };
       }
@@ -180,7 +195,7 @@ export async function applyProductSchemaToOne(
       ok: true,
       message: reviews
         ? `Applied with ${reviews.count} real reviews`
-        : "Applied (no Judge.me reviews)",
+        : "Applied (no published reviews for this product)",
       processed: 1,
       saved: 1,
       failed: 0,
@@ -203,14 +218,18 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
   });
   const job = await startJob("json_ld_products", products.length);
   try {
-    // Pre-fetch Judge.me reviews in parallel (fast) so the per-product loop
-    // below doesn't serialize on the network.
+    // Pre-fetch reviews in batch so the per-product loop below doesn't
+    // serialize on the network. Keyed by product handle (the reviews API
+    // tracks reviews per handle, not Shopify GID).
     const reviewMap = new Map<
       string,
-      Awaited<ReturnType<typeof fetchJudgeMeAggregate>>
+      Awaited<ReturnType<typeof fetchReviewsForHandle>>
     >();
     try {
-      const batch = await fetchJudgeMeBatch(products.map((p) => p.id));
+      const handles = products
+        .map((p) => p.handle)
+        .filter((h): h is string => !!h);
+      const batch = await fetchReviewsBatch(handles);
       for (const [k, v] of batch) reviewMap.set(k, v);
     } catch {}
     const collectionMap = await buildProductTypeToCollectionMap();
@@ -220,7 +239,7 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
     for (let i = 0; i < products.length; i++) {
       const p = products[i];
       try {
-        const agg = reviewMap.get(p.id);
+        const agg = p.handle ? reviewMap.get(p.handle) : null;
         const reviews: RealReviews | null = agg
           ? {
               rating: agg.rating,
@@ -229,8 +248,8 @@ export async function applyProductSchemaToAll(): Promise<ApplyResult> {
                 rating: rv.rating,
                 title: rv.title,
                 body: rv.body,
-                reviewer: rv.reviewer.name,
-                date: rv.created_at,
+                reviewer: rv.reviewer,
+                date: rv.date,
               })),
             }
           : null;
@@ -352,7 +371,7 @@ export async function previewProductSchema(
     const shop = await getShop();
     let reviews: RealReviews | null = null;
     try {
-      const agg = await fetchJudgeMeAggregate(r.id);
+      const agg = r.handle ? await fetchReviewsForHandle(r.handle) : null;
       if (agg) {
         reviews = {
           rating: agg.rating,
@@ -361,8 +380,8 @@ export async function previewProductSchema(
             rating: rv.rating,
             title: rv.title,
             body: rv.body,
-            reviewer: rv.reviewer.name,
-            date: rv.created_at,
+            reviewer: rv.reviewer,
+            date: rv.date,
           })),
         };
       }

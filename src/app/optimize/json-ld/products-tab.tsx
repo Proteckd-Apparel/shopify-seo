@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import {
   applyProductSchemaToAll,
   applyProductSchemaToOne,
-  debugJudgeMeForResource,
+  debugReviewsForResource,
   previewProductSchema,
   saveJsonLdConfig,
   scanThemeConflicts,
@@ -32,11 +32,11 @@ export function ProductsTab({
   const [previewJson, setPreviewJson] = useState<string | null>(null);
   const [applyingAll, setApplyingAll] = useState(false);
 
-  function runJudgeMeDebug(id: string) {
+  function runReviewsDebug(id: string) {
     setDebugReport(null);
     setMsg(null);
     start(async () => {
-      const r = await debugJudgeMeForResource(id);
+      const r = await debugReviewsForResource(id);
       setDebugReport(r);
     });
   }
@@ -523,7 +523,7 @@ export function ProductsTab({
           disabled={pending}
           className="px-4 py-1.5 rounded bg-white border border-amber-300 text-amber-700 text-sm font-semibold hover:bg-amber-50 disabled:opacity-60"
         >
-          Test Judge.me
+          Test Reviews
         </button>
         <button
           type="button"
@@ -564,11 +564,11 @@ export function ProductsTab({
 
       {debugPickerOpen && (
         <ProductPicker
-          title="Pick a product to test Judge.me"
+          title="Pick a product to test reviews API"
           onClose={() => setDebugPickerOpen(false)}
           onPick={(id) => {
             setDebugPickerOpen(false);
-            runJudgeMeDebug(id);
+            runReviewsDebug(id);
           }}
         />
       )}
@@ -617,7 +617,7 @@ export function ProductsTab({
         <div className="bg-white border border-slate-200 rounded-lg p-4 mt-3">
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs uppercase text-slate-500">
-              Judge.me debug
+              Reviews API debug
             </div>
             <button
               type="button"
