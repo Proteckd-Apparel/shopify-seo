@@ -256,7 +256,7 @@ export async function computeStats(): Promise<StatGroup[]> {
         label: "Avg Body Length",
         value: avgBodyLen,
         group: "Content",
-        href: "/optimize/main-html-text",
+        href: `/optimize/missing-content?type=${type}&filter=all`,
       },
       {
         label: "Thin Content",
@@ -264,16 +264,16 @@ export async function computeStats(): Promise<StatGroup[]> {
         group: "Content",
         tone: thinBody === 0 ? "good" : "bad",
         hint: "Body < 120 chars",
-        href: thinBody > 0 ? "/optimize/main-html-text" : undefined,
-        fixHint: thinBody > 0 ? "Expand body copy" : undefined,
+        href: thinBody > 0 ? `/optimize/missing-content?type=${type}&filter=thin` : undefined,
+        fixHint: thinBody > 0 ? "View list to fix" : undefined,
       },
       {
         label: "Empty Body",
         value: emptyBody,
         group: "Content",
         tone: emptyBody === 0 ? "good" : "bad",
-        href: emptyBody > 0 ? "/optimize/main-html-text" : undefined,
-        fixHint: emptyBody > 0 ? "Add body copy" : undefined,
+        href: emptyBody > 0 ? `/optimize/missing-content?type=${type}&filter=empty` : undefined,
+        fixHint: emptyBody > 0 ? "View list to fix" : undefined,
       },
     ];
 
