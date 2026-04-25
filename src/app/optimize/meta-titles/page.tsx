@@ -131,6 +131,10 @@ export default async function MetaTitlesPage({
           label={`Generate too-short meta titles (${type})`}
           action={bulkGenerateMetaTitles.bind(null, type, "short")}
         />
+        <BulkButton
+          label={`Regenerate ALL meta titles (${type})`}
+          action={bulkGenerateMetaTitles.bind(null, type, "all")}
+        />
       </div>
       <BulkProgressBar kind="meta_titles" />
 

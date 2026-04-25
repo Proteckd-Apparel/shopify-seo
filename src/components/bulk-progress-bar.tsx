@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { JobKind } from "@/lib/bulk-job";
+import type { JobKind } from "@/lib/bulk-job-shared";
 
 type Snapshot = {
   id: string;

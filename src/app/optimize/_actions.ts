@@ -113,14 +113,14 @@ export type BulkResult = {
 
 export async function bulkGenerateMetaTitles(
   type: string,
-  scope: boolean | "missing" | "short" = true,
+  scope: boolean | "missing" | "short" | "all" = true,
 ): Promise<BulkResult> {
   return bulkResource(type, "seoTitle", scope);
 }
 
 export async function bulkGenerateMetaDescriptions(
   type: string,
-  scope: boolean | "missing" | "short" = true,
+  scope: boolean | "missing" | "short" | "all" = true,
 ): Promise<BulkResult> {
   return bulkResource(type, "seoDescription", scope);
 }
@@ -128,7 +128,7 @@ export async function bulkGenerateMetaDescriptions(
 async function bulkResource(
   type: string,
   field: "seoTitle" | "seoDescription",
-  scope: boolean | "missing" | "short",
+  scope: boolean | "missing" | "short" | "all",
 ): Promise<BulkResult> {
   let processed = 0;
   let saved = 0;

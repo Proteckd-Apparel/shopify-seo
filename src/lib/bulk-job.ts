@@ -6,45 +6,15 @@
 
 import { prisma } from "./prisma";
 
-export type JobKind =
-  | "json_ld_products"
-  | "json_ld_collections"
-  | "json_ld_articles"
-  | "json_ld_sitewide"
-  | "merchant_copy"
-  | "scan"
-  | "meta_titles"
-  | "meta_descriptions"
-  | "alt_text";
+// Re-export shared types/constants so existing server-side imports
+// (`import { JobKind } from "@/lib/bulk-job"`) keep working.
+export {
+  type JobKind,
+  JOB_LABELS,
+  JOB_HREFS,
+} from "./bulk-job-shared";
 
-// Human-readable labels for the global running-job indicator. New JobKind
-// added → add a label here so the topbar pill can display it.
-export const JOB_LABELS: Record<JobKind, string> = {
-  json_ld_products: "JSON-LD products",
-  json_ld_collections: "JSON-LD collections",
-  json_ld_articles: "JSON-LD articles",
-  json_ld_sitewide: "JSON-LD site-wide",
-  merchant_copy: "Merchant copy",
-  scan: "Catalog scan",
-  meta_titles: "Meta titles",
-  meta_descriptions: "Meta descriptions",
-  alt_text: "Alt text",
-};
-
-// Where to deep-link from the topbar pill to the page that owns the job.
-// Used so the user can click a running indicator and jump back to the
-// optimize screen for that job kind.
-export const JOB_HREFS: Record<JobKind, string> = {
-  json_ld_products: "/optimize/json-ld",
-  json_ld_collections: "/optimize/json-ld",
-  json_ld_articles: "/optimize/json-ld",
-  json_ld_sitewide: "/optimize/json-ld",
-  merchant_copy: "/products/merchant-copy",
-  scan: "/scan",
-  meta_titles: "/optimize/meta-titles?mode=inline",
-  meta_descriptions: "/optimize/meta-descriptions?mode=inline",
-  alt_text: "/optimize/alt-texts?mode=inline",
-};
+import type { JobKind } from "./bulk-job-shared";
 
 export async function startJob(kind: JobKind, total: number) {
   return prisma.jobRun.create({

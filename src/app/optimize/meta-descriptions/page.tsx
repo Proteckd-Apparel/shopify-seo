@@ -132,6 +132,10 @@ export default async function MetaDescriptionsPage({
           label={`Generate too-short meta descriptions (${type})`}
           action={bulkGenerateMetaDescriptions.bind(null, type, "short")}
         />
+        <BulkButton
+          label={`Regenerate ALL meta descriptions (${type})`}
+          action={bulkGenerateMetaDescriptions.bind(null, type, "all")}
+        />
       </div>
       <BulkProgressBar kind="meta_descriptions" />
 

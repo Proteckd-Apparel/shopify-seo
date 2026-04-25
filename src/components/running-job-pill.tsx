@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { JOB_HREFS, JOB_LABELS, type JobKind } from "@/lib/bulk-job";
+import { JOB_HREFS, JOB_LABELS, type JobKind } from "@/lib/bulk-job-shared";
 
 type Snapshot = {
   id: string;
