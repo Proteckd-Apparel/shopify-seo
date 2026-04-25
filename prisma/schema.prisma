@@ -163,9 +163,11 @@ model Image {
   width        Int?
   height       Int?
   bytes        Int?
+  updatedAt    DateTime @default(now()) @updatedAt
   resource     Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@index([resourceId])
+  @@index([updatedAt])
 }
 
 // ---------- Scans ----------

@@ -225,32 +225,53 @@ export async function bulkGenerateAltText(
   let failed = 0;
   let firstError: string | null = null;
 
+  // Order by updatedAt ASC so repeat clicks progress through the catalog —
+  // each image's updatedAt bumps when updateImageAlt writes a new alt, so
+  // already-processed images sink to the bottom of the queue and the next
+  // click picks up the next batch.
+  const ALT_CAP = 2000;
+  const ALT_CONCURRENCY = 5;
   const images = await prisma.image.findMany({
     where: onlyMissing
       ? { OR: [{ altText: null }, { altText: "" }] }
       : undefined,
     include: { resource: true },
-    take: 1000,
+    orderBy: { updatedAt: "asc" },
+    take: ALT_CAP,
   });
 
   const job = await startJob("alt_text", images.length);
 
-  for (const img of images) {
-    processed++;
-    try {
-      // Vision-based: looks at the actual photo, falls back to title-only
-      // inside generateForImage if the Vision call fails.
-      const value = await generateForImage(img.id);
-      await updateImageAlt(img.id, value, "ai", "claude-haiku-4-5");
-      saved++;
-    } catch (e) {
-      failed++;
-      if (!firstError) {
-        firstError = e instanceof Error ? e.message : String(e);
+  // Worker-pool concurrency. Vision AI calls are network-bound (image
+  // fetch + Claude API) so 5 in flight gives ~5x throughput without
+  // tripping rate limits. With ~2s per call this lets ~1500 images
+  // finish inside Railway's 10-min serverless timeout.
+  const queue = [...images];
+  async function worker() {
+    while (queue.length > 0) {
+      const img = queue.shift();
+      if (!img) return;
+      processed++;
+      try {
+        const value = await generateForImage(img.id);
+        await updateImageAlt(img.id, value, "ai", "claude-haiku-4-5");
+        saved++;
+      } catch (e) {
+        failed++;
+        if (!firstError) {
+          firstError = e instanceof Error ? e.message : String(e);
+        }
+      }
+      // Update progress on every Nth completion to avoid spamming the DB.
+      if (processed % 5 === 0 || queue.length === 0) {
+        await setProgress(job.id, processed);
       }
     }
-    await setProgress(job.id, processed);
   }
+  await Promise.all(
+    Array.from({ length: ALT_CONCURRENCY }, () => worker()),
+  );
+  await setProgress(job.id, processed);
   await finishJob(job.id, { ok: failed === 0, error: firstError ?? undefined });
 
   revalidatePath("/optimize/alt-texts");
@@ -263,7 +284,7 @@ export async function bulkGenerateAltText(
     message: `Processed ${processed} (saved ${saved}, failed ${failed}). ${
       firstError ? `First error: ${firstError}. ` : ""
     }${
-      processed === 1000 ? "Hit the 1000-row safety cap — click again." : ""
+      processed === ALT_CAP ? `Hit the ${ALT_CAP}-row cap — click again.` : ""
     }`,
   };
 }

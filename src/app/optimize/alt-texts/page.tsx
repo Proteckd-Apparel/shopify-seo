@@ -95,12 +95,18 @@ async function InlineEditMode({
 
   return (
     <>
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-2 items-center">
         <BulkButton
           label="Generate missing alt texts (AI)"
           action={bulkGenerateAltText.bind(null, true)}
           costOp="alt_text"
           estimatedRows={totalMissing}
+        />
+        <BulkButton
+          label="Regenerate ALL alt texts (overwrites existing)"
+          action={bulkGenerateAltText.bind(null, false)}
+          costOp="alt_text"
+          estimatedRows={total}
         />
       </div>
       <BulkProgressBar kind="alt_text" />
