@@ -87,23 +87,7 @@ const THEME_FILES_TO_SCAN = [
   "snippets/product-template-variables.liquid",
 ];
 
-// Shopify returns INVALID_VALUE "Owner does not exist" when a metafield write
-// targets a product/collection/article GID Shopify no longer has. The local
-// Resource row is a stale cache from a previous scan — the right move is to
-// drop it from our DB and treat it as skipped, not a failure.
-function isStaleOwnerError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e);
-  return /Owner does not exist/i.test(msg);
-}
-
-// Best-effort prune of a stale local Resource row. Image rows cascade via the
-// schema's onDelete. If this fails (e.g. concurrent delete), swallow it —
-// the next scan will reconcile.
-async function pruneStaleResource(id: string): Promise<void> {
-  try {
-    await prisma.resource.delete({ where: { id } });
-  } catch {}
-}
+import { isStaleOwnerError, pruneStaleResource } from "@/lib/stale-resource";
 
 async function getShop(): Promise<{ domain: string; name: string }> {
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });

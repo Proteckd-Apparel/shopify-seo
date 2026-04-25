@@ -103,7 +103,22 @@ export function ThemeImagesUI() {
       )
     : images;
 
-  const totalBytes = images.reduce((s, i) => s + i.size, 0);
+  // Defensive: filter out implausible sizes (Shopify occasionally returns
+  // a wrong-unit value for some theme files which made the total render
+  // as "782014.3 MB" for a ~1.5 MB pair). 500 MB ceiling catches outliers
+  // without dropping legit large hero JPEGs.
+  const PLAUSIBLE_MAX = 500 * 1024 * 1024;
+  const totalBytes = images.reduce(
+    (s, i) => s + (i.size > 0 && i.size < PLAUSIBLE_MAX ? i.size : 0),
+    0,
+  );
+  function fmtBytes(n: number): string {
+    if (!Number.isFinite(n) || n <= 0) return "0 KB";
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
 
   return (
     <div className="max-w-5xl space-y-4">
@@ -166,7 +181,7 @@ export function ThemeImagesUI() {
         />
         <div className="text-xs text-slate-500">
           {filtered.length} of {images.length} images ·{" "}
-          {(totalBytes / 1024 / 1024).toFixed(1)} MB total
+          {fmtBytes(totalBytes)} total
         </div>
       </div>
 

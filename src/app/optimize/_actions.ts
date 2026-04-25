@@ -15,6 +15,11 @@ import {
   startJob,
   type JobKind,
 } from "@/lib/bulk-job";
+import {
+  isStaleOwnerError,
+  pruneStaleImage,
+  pruneStaleResource,
+} from "@/lib/stale-resource";
 
 export type SaveResult = { ok: boolean; message: string };
 export type GenerateResult = { ok: boolean; value?: string; message?: string };
@@ -172,6 +177,7 @@ async function bulkResource(
   const jobKind: JobKind = field === "seoTitle" ? "meta_titles" : "meta_descriptions";
   const job = await startJob(jobKind, resources.length);
 
+  let staleSkipped = 0;
   for (const r of resources) {
     processed++;
     try {
@@ -196,8 +202,16 @@ async function bulkResource(
       );
       saved++;
     } catch (e) {
-      failed++;
-      if (!firstError) firstError = e instanceof Error ? e.message : String(e);
+      if (isStaleOwnerError(e)) {
+        staleSkipped++;
+        await pruneStaleResource(r.id);
+        console.warn(
+          `[bulk ${field}] pruned stale ${r.handle ?? r.id} (no longer in Shopify)`,
+        );
+      } else {
+        failed++;
+        if (!firstError) firstError = e instanceof Error ? e.message : String(e);
+      }
     }
     await setProgress(job.id, processed);
   }
@@ -206,14 +220,16 @@ async function bulkResource(
   revalidatePath("/optimize/meta-titles");
   revalidatePath("/optimize/meta-descriptions");
 
+  const parts = [`Processed ${processed} (saved ${saved}, failed ${failed})`];
+  if (staleSkipped > 0) parts.push(`pruned ${staleSkipped} stale (deleted in Shopify)`);
+  if (processed === 1000) parts.push("Hit the 1000-row safety cap — click again");
+
   return {
     ok: failed === 0,
     processed,
     saved,
     failed,
-    message: `Processed ${processed} (saved ${saved}, failed ${failed}). ${
-      processed === 1000 ? "Hit the 1000-row safety cap — click again." : ""
-    }`,
+    message: parts.join(". ") + ".",
   };
 }
 
@@ -247,6 +263,7 @@ export async function bulkGenerateAltText(
   // tripping rate limits. With ~2s per call this lets ~1500 images
   // finish inside Railway's 10-min serverless timeout.
   const queue = [...images];
+  let staleSkipped = 0;
   async function worker() {
     while (queue.length > 0) {
       const img = queue.shift();
@@ -257,9 +274,20 @@ export async function bulkGenerateAltText(
         await updateImageAlt(img.id, value, "ai", "claude-haiku-4-5");
         saved++;
       } catch (e) {
-        failed++;
-        if (!firstError) {
-          firstError = e instanceof Error ? e.message : String(e);
+        if (isStaleOwnerError(e)) {
+          // Image GID is gone from Shopify (e.g. fileUpdate
+          // RESOURCE_NOT_FOUND). Drop the local Image row and move on
+          // — image-level prune doesn't disturb the parent product.
+          staleSkipped++;
+          await pruneStaleImage(img.id);
+          console.warn(
+            `[bulk alt-text] pruned stale image ${img.id} (no longer in Shopify)`,
+          );
+        } else {
+          failed++;
+          if (!firstError) {
+            firstError = e instanceof Error ? e.message : String(e);
+          }
         }
       }
       // Update progress on every Nth completion to avoid spamming the DB.
@@ -276,15 +304,18 @@ export async function bulkGenerateAltText(
 
   revalidatePath("/optimize/alt-texts");
 
+  const altParts = [`Processed ${processed} (saved ${saved}, failed ${failed})`];
+  if (staleSkipped > 0)
+    altParts.push(`pruned ${staleSkipped} stale image(s) (deleted in Shopify)`);
+  if (firstError) altParts.push(`First error: ${firstError}`);
+  if (processed === ALT_CAP)
+    altParts.push(`Hit the ${ALT_CAP}-row cap — click again`);
+
   return {
     ok: failed === 0,
     processed,
     saved,
     failed,
-    message: `Processed ${processed} (saved ${saved}, failed ${failed}). ${
-      firstError ? `First error: ${firstError}. ` : ""
-    }${
-      processed === ALT_CAP ? `Hit the ${ALT_CAP}-row cap — click again.` : ""
-    }`,
+    message: altParts.join(". ") + ".",
   };
 }

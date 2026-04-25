@@ -36,6 +36,16 @@ export async function listThemeImages(): Promise<{
         size: a.size,
         contentType: a.contentType,
       }));
+    // Log any implausibly-large size so we can diagnose Shopify
+    // returning the wrong unit for certain assets (>500 MB on a
+    // theme image is almost certainly bogus).
+    for (const img of images) {
+      if (img.size > 500 * 1024 * 1024) {
+        console.warn(
+          `[theme-images] suspicious size from Shopify for ${img.filename}: ${img.size} bytes (~${(img.size / 1024 / 1024).toFixed(0)} MB)`,
+        );
+      }
+    }
     return { ok: true, images, themeId: theme.id };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };
