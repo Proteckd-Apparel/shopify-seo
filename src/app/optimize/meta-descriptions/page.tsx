@@ -127,14 +127,20 @@ export default async function MetaDescriptionsPage({
         <BulkButton
           label={`Generate missing meta descriptions (${type})`}
           action={bulkGenerateMetaDescriptions.bind(null, type, true)}
+          costOp="meta_description"
+          estimatedRows={missingCount}
         />
         <BulkButton
           label={`Generate too-short meta descriptions (${type})`}
           action={bulkGenerateMetaDescriptions.bind(null, type, "short")}
+          costOp="meta_description"
+          estimatedRows={shortCount}
         />
         <BulkButton
           label={`Regenerate ALL meta descriptions (${type})`}
           action={bulkGenerateMetaDescriptions.bind(null, type, "all")}
+          costOp="meta_description"
+          estimatedRows={total}
         />
       </div>
       <BulkProgressBar kind="meta_descriptions" />

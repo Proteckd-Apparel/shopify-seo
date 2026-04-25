@@ -99,6 +99,8 @@ async function InlineEditMode({
         <BulkButton
           label="Generate missing alt texts (AI)"
           action={bulkGenerateAltText.bind(null, true)}
+          costOp="alt_text"
+          estimatedRows={totalMissing}
         />
       </div>
       <BulkProgressBar kind="alt_text" />

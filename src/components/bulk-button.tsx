@@ -2,6 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
+import {
+  AI_COST_PER_ROW_CENTS,
+  estimateBulkCost,
+  formatUsd,
+  type AiOp,
+} from "@/lib/ai-pricing";
 
 type BulkResult = {
   ok: boolean;
@@ -14,17 +20,37 @@ type BulkResult = {
 export function BulkButton({
   label,
   action,
+  costOp,
+  estimatedRows,
 }: {
   label: string;
   action: () => Promise<BulkResult>;
+  // Optional cost-estimate hint. When provided, the confirm dialog
+  // shows "Estimated cost: ~$X" and the per-row rate, and a small
+  // "~$X" tag appears next to the button so users see the
+  // ceiling before clicking.
+  costOp?: AiOp;
+  estimatedRows?: number;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<BulkResult | null>(null);
 
+  // Bulk actions cap at 200 per click (see _actions.ts), so the worst
+  // case is min(estimatedRows, 200). Show that as the quote.
+  const quoteRows = costOp
+    ? Math.min(estimatedRows ?? 200, 200)
+    : 0;
+  const quoteUsd =
+    costOp && quoteRows > 0 ? estimateBulkCost(costOp, quoteRows) : null;
+  const perRowUsd = costOp ? formatUsd(AI_COST_PER_ROW_CENTS[costOp]) : null;
+
   function run() {
+    const costLine = quoteUsd
+      ? `\n\nEstimated cost: up to ${quoteUsd} (${quoteRows} rows × ${perRowUsd}/row, Claude Haiku 4.5).`
+      : "";
     if (
       !confirm(
-        `${label}\n\nThis will use Claude AI and write to your Shopify store. Continue?`,
+        `${label}\n\nThis will use Claude AI and write to your Shopify store.${costLine}\n\nContinue?`,
       )
     )
       return;
@@ -42,6 +68,9 @@ export function BulkButton({
       >
         <Sparkles className="w-3.5 h-3.5" />
         {pending ? "Working…" : label}
+        {quoteUsd && (
+          <span className="text-white/70 font-normal">~{quoteUsd}</span>
+        )}
       </button>
       {result && (
         <span
