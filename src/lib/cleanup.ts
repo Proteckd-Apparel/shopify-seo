@@ -70,6 +70,25 @@ export async function pruneOldJobRuns(): Promise<number> {
   return result.count;
 }
 
+// Server actions cap at 10 min. A row still in "running" state past
+// this window died mid-execution (Railway redeploy, crash, timeout)
+// and will never call finishJob — sweep them to "failed" so they don't
+// haunt the topbar pill or appear as ghosts in job history.
+const STALE_RUNNING_MS = 30 * 60 * 1000;
+
+export async function failStaleRunningJobs(): Promise<number> {
+  const cutoff = new Date(Date.now() - STALE_RUNNING_MS);
+  const result = await prisma.jobRun.updateMany({
+    where: { status: "running", startedAt: { lt: cutoff } },
+    data: {
+      status: "failed",
+      finishedAt: new Date(),
+      error: "Abandoned (no progress for >30 min)",
+    },
+  });
+  return result.count;
+}
+
 export type CleanupReport = {
   imageBackups: number;
   scanRuns: number;
@@ -77,18 +96,20 @@ export type CleanupReport = {
   notFoundStale: number;
   brokenLinks: number;
   jobRuns: number;
+  staleJobsFailed: number;
   durationMs: number;
 };
 
 export async function runAllCleanups(): Promise<CleanupReport> {
   const start = Date.now();
-  const [imageBackups, scanRuns, notFound, brokenLinks, jobRuns] =
+  const [imageBackups, scanRuns, notFound, brokenLinks, jobRuns, staleJobsFailed] =
     await Promise.all([
       pruneOldBackups(),
       pruneOldScanRuns(),
       pruneOldNotFound(),
       pruneOldBrokenLinks(),
       pruneOldJobRuns(),
+      failStaleRunningJobs(),
     ]);
   return {
     imageBackups,
@@ -97,6 +118,7 @@ export async function runAllCleanups(): Promise<CleanupReport> {
     notFoundStale: notFound.stale,
     brokenLinks,
     jobRuns,
+    staleJobsFailed,
     durationMs: Date.now() - start,
   };
 }
