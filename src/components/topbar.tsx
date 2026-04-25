@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { RunningJobPill } from "./running-job-pill";
 
 export async function TopBar() {
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
@@ -25,6 +26,7 @@ export async function TopBar() {
         )}
       </div>
       <div className="flex items-center gap-2 text-sm">
+        <RunningJobPill />
         <Link
           href="/analytics/scan"
           className="px-3 py-1.5 rounded-md bg-slate-900 text-white hover:bg-slate-800"

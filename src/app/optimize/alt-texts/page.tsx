@@ -9,6 +9,7 @@ import {
   saveAltText,
 } from "../_actions";
 import { BulkButton } from "@/components/bulk-button";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 import {
   getTemplate,
   loadOptimizerConfig,
@@ -100,6 +101,7 @@ async function InlineEditMode({
           action={bulkGenerateAltText.bind(null, true)}
         />
       </div>
+      <BulkProgressBar kind="alt_text" />
 
       <div className="flex gap-2 mb-4 items-center">
         <Pill href="?mode=inline&filter=missing" current={filter} value="missing">

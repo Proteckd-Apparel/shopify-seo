@@ -9,6 +9,7 @@ import {
   saveSeoTitle,
 } from "../_actions";
 import { BulkButton } from "@/components/bulk-button";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 import {
   getTemplate,
   loadOptimizerConfig,
@@ -131,6 +132,7 @@ export default async function MetaTitlesPage({
           action={bulkGenerateMetaTitles.bind(null, type, "short")}
         />
       </div>
+      <BulkProgressBar kind="meta_titles" />
 
       <div className="flex flex-wrap gap-2 mb-4 items-center">
         <TypeTabs current={type} filter={filter} />

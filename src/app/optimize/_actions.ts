@@ -10,6 +10,12 @@ import {
   generateMetaTitle,
   generateAltText,
 } from "@/lib/ai-generate";
+import {
+  finishJob,
+  setProgress,
+  startJob,
+  type JobKind,
+} from "@/lib/bulk-job";
 
 export type SaveResult = { ok: boolean; message: string };
 export type GenerateResult = { ok: boolean; value?: string; message?: string };
@@ -127,6 +133,7 @@ async function bulkResource(
   let processed = 0;
   let saved = 0;
   let failed = 0;
+  let firstError: string | null = null;
 
   // seoTitle short = under 25 chars, seoDescription short = under 70 chars.
   const SHORT_THRESHOLD = field === "seoTitle" ? 25 : 70;
@@ -156,6 +163,11 @@ async function bulkResource(
       .slice(0, 200);
   }
 
+  // Track this run as a JobRun so the BulkProgressBar (and the global
+  // running-job pill in the topbar) can poll progress.
+  const jobKind: JobKind = field === "seoTitle" ? "meta_titles" : "meta_descriptions";
+  const job = await startJob(jobKind, resources.length);
+
   for (const r of resources) {
     processed++;
     try {
@@ -179,10 +191,13 @@ async function bulkResource(
         "claude-haiku-4-5",
       );
       saved++;
-    } catch {
+    } catch (e) {
       failed++;
+      if (!firstError) firstError = e instanceof Error ? e.message : String(e);
     }
+    await setProgress(job.id, processed);
   }
+  await finishJob(job.id, { ok: failed === 0, error: firstError ?? undefined });
 
   revalidatePath("/optimize/meta-titles");
   revalidatePath("/optimize/meta-descriptions");
@@ -214,6 +229,8 @@ export async function bulkGenerateAltText(
     take: 200,
   });
 
+  const job = await startJob("alt_text", images.length);
+
   for (const img of images) {
     processed++;
     try {
@@ -237,7 +254,9 @@ export async function bulkGenerateAltText(
         firstError = e instanceof Error ? e.message : String(e);
       }
     }
+    await setProgress(job.id, processed);
   }
+  await finishJob(job.id, { ok: failed === 0, error: firstError ?? undefined });
 
   revalidatePath("/optimize/alt-texts");
 
