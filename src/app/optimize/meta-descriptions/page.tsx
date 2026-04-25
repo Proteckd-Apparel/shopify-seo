@@ -93,6 +93,17 @@ export default async function MetaDescriptionsPage({
   }
 
   const total = await prisma.resource.count({ where: { type } });
+  const missingCount = await prisma.resource.count({
+    where: { type, OR: [{ seoDescription: null }, { seoDescription: "" }] },
+  });
+  const allDescs = await prisma.resource.findMany({
+    where: { type },
+    select: { seoDescription: true },
+  });
+  const shortCount = allDescs.filter(
+    (r) => (r.seoDescription ?? "").length > 0 && (r.seoDescription ?? "").length < MIN,
+  ).length;
+  const longCount = allDescs.filter((r) => (r.seoDescription ?? "").length > MAX).length;
 
   return (
     <div>
@@ -129,13 +140,13 @@ export default async function MetaDescriptionsPage({
             All ({total})
           </FilterPill>
           <FilterPill type={type} filter="missing" current={filter}>
-            Missing
+            Missing ({missingCount})
           </FilterPill>
           <FilterPill type={type} filter="short" current={filter}>
-            Too short
+            Too short ({shortCount})
           </FilterPill>
           <FilterPill type={type} filter="long" current={filter}>
-            Too long
+            Too long ({longCount})
           </FilterPill>
         </div>
       </div>

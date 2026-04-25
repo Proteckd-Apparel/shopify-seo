@@ -92,6 +92,17 @@ export default async function MetaTitlesPage({
   }
 
   const total = await prisma.resource.count({ where: { type } });
+  const missingCount = await prisma.resource.count({
+    where: { type, OR: [{ seoTitle: null }, { seoTitle: "" }] },
+  });
+  const allTitles = await prisma.resource.findMany({
+    where: { type },
+    select: { seoTitle: true },
+  });
+  const shortCount = allTitles.filter(
+    (r) => (r.seoTitle ?? "").length > 0 && (r.seoTitle ?? "").length < MIN,
+  ).length;
+  const longCount = allTitles.filter((r) => (r.seoTitle ?? "").length > MAX).length;
 
   return (
     <div>
@@ -128,13 +139,13 @@ export default async function MetaTitlesPage({
             All ({total})
           </FilterPill>
           <FilterPill type={type} filter="missing" current={filter}>
-            Missing
+            Missing ({missingCount})
           </FilterPill>
           <FilterPill type={type} filter="short" current={filter}>
-            Too short
+            Too short ({shortCount})
           </FilterPill>
           <FilterPill type={type} filter="long" current={filter}>
-            Too long
+            Too long ({longCount})
           </FilterPill>
         </div>
       </div>
