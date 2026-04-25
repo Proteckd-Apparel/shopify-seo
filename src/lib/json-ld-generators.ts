@@ -43,35 +43,7 @@ function parseRaw(resource: ResourceWithImages): RawProduct {
   }
 }
 
-function findOption(
-  v: RawVariant,
-  names: string[],
-): string | undefined {
-  for (const opt of v.selectedOptions) {
-    if (names.some((n) => opt.name.toLowerCase() === n.toLowerCase())) {
-      return opt.value;
-    }
-  }
-  return undefined;
-}
-
-function variesByForOptions(options: RawProduct["options"]): string[] {
-  const map: Record<string, string> = {
-    size: "https://schema.org/size",
-    color: "https://schema.org/color",
-    colour: "https://schema.org/color",
-    material: "https://schema.org/material",
-    pattern: "https://schema.org/pattern",
-  };
-  const out: string[] = [];
-  for (const o of options ?? []) {
-    const k = o.name.toLowerCase();
-    if (map[k]) out.push(map[k]);
-  }
-  return out;
-}
-
-// ---------- Product (now an array of ProductGroup + supporting nodes) ----------
+// ---------- Product (root Product + supporting return/shipping nodes) ----------
 
 const RETURN_POLICY_ID = "#return_policy_psk";
 const SHIPPING_RATE_ID = "#shipping_rate_settings_psk";
@@ -89,9 +61,9 @@ export type RealReviews = {
   }>;
 };
 
-// Returned shape is an array of objects (ProductGroup + return policy +
-// shipping rate settings + shipping details), matching SEO King's pattern.
-// Optionally appends a BreadcrumbList when withBreadcrumb is true.
+// Returned shape is an array of objects (Product + return policy +
+// shipping rate settings + shipping details). Optionally appends a
+// BreadcrumbList when withBreadcrumb is true.
 export function generateProductSchema(
   resource: ResourceWithImages,
   cfg: ProductsJsonLdConfig,
@@ -129,7 +101,7 @@ function generateProductSchemaInternal(
     resource.url ??
     `https://${shop.domain}/products/${resource.handle}`;
   const description = pickDescription(resource, cfg.descriptionType);
-  const productGroupId = resource.id.replace("gid://shopify/Product/", "");
+  const productId = resource.id.replace("gid://shopify/Product/", "");
   const currency = cfg.currency || "USD";
 
   const conditionMap: Record<string, string> = {
@@ -162,10 +134,9 @@ function generateProductSchemaInternal(
           ratingValue: reviews.rating,
           ratingCount: reviews.count,
         }
-      : buildAggregateRating(productGroupId, cfg)
+      : buildAggregateRating(productId, cfg)
     : undefined;
 
-  // ----- Real review array (Judge.me) — embedded in the ProductGroup
   const reviewArray =
     reviews && reviews.reviews.length > 0
       ? reviews.reviews.map((r) => ({
@@ -182,11 +153,91 @@ function generateProductSchemaInternal(
         }))
       : undefined;
 
-  // ----- Build the inlined shipping + return policy blocks ONCE so we can
-  // copy them into every variant's offer (instead of using @id refs which
-  // create extra top-level entities in the JSON-LD).
   const countries = parseCountries(cfg.shippingCountries, cfg.shippingRegion);
-  const inlineReturnPolicy: Record<string, unknown> = {
+
+  // ----- Build offers: one Offer per variant. If no variants, fall back to
+  // a single Offer keyed off the product. Google counts Product items by
+  // crawled URL, and each variant URL renders this same Product schema, so
+  // each variant URL becomes its own counted Product snippet.
+  const offers = (variants.length > 0
+    ? variants.map((v) => {
+        const compareAt = v.compareAtPrice ? Number(v.compareAtPrice) : null;
+        const price = Number(v.price);
+        const offer: Record<string, unknown> = {
+          "@type": "Offer",
+          url: `${url}?variant=${v.id.replace("gid://shopify/ProductVariant/", "")}`,
+          sku: v.sku ?? v.id,
+          priceCurrency: currency,
+          price,
+          priceValidUntil: priceValidUntil(),
+          itemCondition,
+          seller,
+          availability: cfg.alwaysShowInStock || v.availableForSale
+            ? "https://schema.org/InStock"
+            : "https://schema.org/OutOfStock",
+          areaServed: countryName(cfg.shippingRegion),
+          shippingDetails: { "@id": SHIPPING_DETAILS_ID },
+          hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
+        };
+        if (compareAt && compareAt > price) {
+          offer.priceSpecification = {
+            "@type": "UnitPriceSpecification",
+            price: compareAt,
+            priceCurrency: currency,
+            priceType: "https://schema.org/ListPrice",
+          };
+        }
+        return offer;
+      })
+    : [
+        {
+          "@type": "Offer",
+          url,
+          priceCurrency: currency,
+          price: Number(raw.priceRangeV2?.minVariantPrice?.amount ?? 0),
+          priceValidUntil: priceValidUntil(),
+          itemCondition,
+          seller,
+          availability: cfg.alwaysShowInStock
+            ? "https://schema.org/InStock"
+            : "https://schema.org/InStock",
+          areaServed: countryName(cfg.shippingRegion),
+          shippingDetails: { "@id": SHIPPING_DETAILS_ID },
+          hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
+        },
+      ]);
+
+  const productImages = resource.images.length > 0
+    ? resource.images.map((i) => i.src.split("?")[0])
+    : undefined;
+
+  // ----- Product root
+  const product: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    productID: productId,
+    sku: variants[0]?.sku ?? productId,
+    mainEntityOfPage: url,
+    url,
+    name: resource.title ?? "",
+    description,
+    brand,
+    image: productImages,
+    audience: cfg.gender || cfg.ageGroup
+      ? {
+          "@type": "PeopleAudience",
+          suggestedGender: cfg.gender || undefined,
+          suggestedMinAge: cfg.ageGroup || undefined,
+        }
+      : undefined,
+    aggregateRating,
+    review: reviewArray,
+    offers: offers.length === 1 ? offers[0] : offers,
+  };
+
+  const returnPolicyNode: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@id": RETURN_POLICY_ID,
     "@type": "MerchantReturnPolicy",
     merchantReturnLink: cfg.returnPolicyUrl || undefined,
     url: cfg.returnPolicyUrl || undefined,
@@ -212,7 +263,22 @@ function generateProductSchemaInternal(
     refundType: "https://schema.org/FullRefund",
   };
 
-  const inlineShippingDetails: Record<string, unknown> = {
+  const shippingRateSettings: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@type": "ShippingRateSettings",
+    "@id": SHIPPING_RATE_ID,
+  };
+  if (cfg.freeShippingThreshold) {
+    shippingRateSettings.freeShippingThreshold = {
+      "@type": "MonetaryAmount",
+      value: String(cfg.freeShippingThreshold),
+      currency,
+    };
+  }
+
+  const shippingDetailsNode: Record<string, unknown> = {
+    "@context": "https://schema.org/",
+    "@id": SHIPPING_DETAILS_ID,
     "@type": "OfferShippingDetails",
     shippingDestination: countries.map((c) => ({
       "@type": "DefinedRegion",
@@ -238,152 +304,11 @@ function generateProductSchemaInternal(
         unitCode: "DAY",
       },
     },
-  };
-
-  // ----- hasVariant array
-  const hasVariant = variants.map((v) => {
-    const size = findOption(v, ["Size"]);
-    const color = findOption(v, ["Color", "Colour"]);
-    const material = findOption(v, ["Material"]);
-    // Variant image (raw JSON shape uses `url`); fall back to first product
-    // image (Prisma shape uses `src`). Normalize both to a `url` field.
-    const variantImage = v.image
-      ? {
-          url: v.image.url,
-          width: v.image.width,
-          height: v.image.height,
-        }
-      : resource.images[0]
-        ? {
-            url: resource.images[0].src,
-            width: resource.images[0].width,
-            height: resource.images[0].height,
-          }
-        : null;
-
-    const compareAt = v.compareAtPrice ? Number(v.compareAtPrice) : null;
-    const price = Number(v.price);
-
-    const offer: Record<string, unknown> = {
-      "@type": "Offer",
-      url: `${url}?variant=${v.id.replace("gid://shopify/ProductVariant/", "")}`,
-      priceCurrency: currency,
-      price,
-      priceValidUntil: priceValidUntil(),
-      itemCondition,
-      seller,
-      availability: cfg.alwaysShowInStock || v.availableForSale
-        ? "https://schema.org/InStock"
-        : "https://schema.org/OutOfStock",
-      areaServed: countryName(cfg.shippingRegion),
-      shippingDetails: { "@id": SHIPPING_DETAILS_ID },
-      hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
-    };
-
-    if (compareAt && compareAt > price) {
-      offer.priceSpecification = {
-        "@type": "UnitPriceSpecification",
-        price: compareAt,
-        priceCurrency: currency,
-        priceType: "https://schema.org/ListPrice",
-      };
-    }
-
-    const variantObj: Record<string, unknown> = {
-      "@type": "Product",
-      inProductGroupWithID: productGroupId,
-      name: resource.title ?? "",
-      description: v.title || `${size ?? ""} / ${color ?? ""}`.trim(),
-      sku: v.sku ?? v.id,
-      mpn: v.sku ?? v.id,
-      size,
-      color,
-      material,
-      image: variantImage
-        ? [
-            {
-              "@type": "ImageObject",
-              contentUrl: variantImage.url.split("?")[0],
-              author: { "@type": "Organization", name: shop.name },
-              width:
-                variantImage.width != null
-                  ? {
-                      "@type": "QuantitativeValue",
-                      value: variantImage.width,
-                      unitCode: "PIX",
-                    }
-                  : undefined,
-              height:
-                variantImage.height != null
-                  ? {
-                      "@type": "QuantitativeValue",
-                      value: variantImage.height,
-                      unitCode: "PIX",
-                    }
-                  : undefined,
-            },
-          ]
-        : undefined,
-      offers: offer,
-      // Reviews + aggregateRating belong on Product, not ProductGroup — Google
-      // rejects ProductGroup as a parent for the review snippet feature.
-      aggregateRating,
-      review: reviewArray,
-    };
-
-    return prune(variantObj);
-  });
-
-  // ----- ProductGroup root
-  const productGroup: Record<string, unknown> = {
-    "@context": "https://schema.org/",
-    "@type": "ProductGroup",
-    productGroupID: productGroupId,
-    mainEntityOfPage: url,
-    name: resource.title ?? "",
-    description,
-    brand,
-    audience: cfg.gender || cfg.ageGroup
-      ? {
-          "@type": "PeopleAudience",
-          suggestedGender: cfg.gender || undefined,
-          suggestedMinAge: cfg.ageGroup || undefined,
-        }
-      : { "@type": "PeopleAudience" },
-    aggregateRating,
-    variesBy: variesByForOptions(raw.options),
-    hasVariant: hasVariant.length > 0 ? hasVariant : undefined,
-  };
-
-  // Build the standalone @id-referenced nodes that the offers point at.
-  const returnPolicyNode: Record<string, unknown> = {
-    "@context": "https://schema.org/",
-    "@id": RETURN_POLICY_ID,
-    ...inlineReturnPolicy,
-  };
-
-  const shippingRateSettings: Record<string, unknown> = {
-    "@context": "https://schema.org/",
-    "@type": "ShippingRateSettings",
-    "@id": SHIPPING_RATE_ID,
-  };
-  if (cfg.freeShippingThreshold) {
-    shippingRateSettings.freeShippingThreshold = {
-      "@type": "MonetaryAmount",
-      value: String(cfg.freeShippingThreshold),
-      currency,
-    };
-  }
-
-  const shippingDetailsNode: Record<string, unknown> = {
-    "@context": "https://schema.org/",
-    "@id": SHIPPING_DETAILS_ID,
-    ...inlineShippingDetails,
     shippingSettingsLink: SHIPPING_RATE_ID,
   };
 
   return [
-    prune(productGroup),
+    prune(product),
     prune(returnPolicyNode),
     prune(shippingRateSettings),
     prune(shippingDetailsNode),
