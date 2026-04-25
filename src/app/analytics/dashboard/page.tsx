@@ -119,8 +119,8 @@ function groupCards(cards: StatCard[]): Record<string, StatCard[]> {
 
 function CardCell({ card }: { card: StatCard }) {
   const tone = TONE_CLASS[card.tone ?? "neutral"];
-  return (
-    <div className={`rounded-lg border p-3 ${tone}`}>
+  const body = (
+    <>
       <div className="text-xl font-semibold text-slate-900">{card.value}</div>
       <div className="text-xs text-slate-600 mt-1 leading-tight">
         {card.label}
@@ -128,8 +128,25 @@ function CardCell({ card }: { card: StatCard }) {
       {card.hint && (
         <div className="text-[10px] text-slate-400 mt-1">{card.hint}</div>
       )}
-    </div>
+      {card.fixHint && (
+        <div className="text-[10px] text-indigo-600 mt-1 font-medium flex items-center gap-1">
+          {card.fixHint}
+          {card.href && <span aria-hidden>→</span>}
+        </div>
+      )}
+    </>
   );
+  if (card.href) {
+    return (
+      <Link
+        href={card.href}
+        className={`rounded-lg border p-3 ${tone} block transition hover:shadow-md hover:border-indigo-400 hover:-translate-y-0.5 cursor-pointer`}
+      >
+        {body}
+      </Link>
+    );
+  }
+  return <div className={`rounded-lg border p-3 ${tone}`}>{body}</div>;
 }
 
 function Stat({
