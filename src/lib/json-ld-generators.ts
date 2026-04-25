@@ -124,7 +124,12 @@ function generateProductSchemaInternal(
       : shop.name;
   const brand = { "@type": "Brand", name: brandName };
 
-  // ----- AggregateRating: use real Judge.me data if we have it
+  // ----- AggregateRating: emit real review data when we have it. When we
+  // don't, only synthesize a value if the user explicitly opted into a
+  // synthesis mode (showRandomRating or alwaysShow5Stars). Otherwise omit
+  // aggregateRating entirely — Google policy disallows ratings not based
+  // on real reviews, and "showStarRating: on" alone shouldn't fabricate
+  // them. Products without reviews simply ship without stars in search.
   const aggregateRating = cfg.showStarRating
     ? reviews && reviews.count > 0
       ? {
@@ -134,7 +139,9 @@ function generateProductSchemaInternal(
           ratingValue: reviews.rating,
           ratingCount: reviews.count,
         }
-      : buildAggregateRating(productId, cfg)
+      : cfg.showRandomRating || cfg.alwaysShow5Stars
+        ? buildAggregateRating(productId, cfg)
+        : undefined
     : undefined;
 
   const reviewArray =
