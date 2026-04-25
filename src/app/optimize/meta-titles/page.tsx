@@ -242,7 +242,7 @@ export function TypeTabs({
       {types.map((t) => (
         <Link
           key={t}
-          href={`?type=${t}&filter=${filter}`}
+          href={`?mode=inline&type=${t}&filter=${filter}`}
           className={`px-3 py-1 text-xs rounded-full border ${
             current === t
               ? "bg-indigo-600 text-white border-indigo-600"
@@ -275,7 +275,7 @@ export function FilterPill({
 }) {
   return (
     <Link
-      href={`?type=${type}&filter=${filter}`}
+      href={`?mode=inline&type=${type}&filter=${filter}`}
       className={`px-3 py-1 text-xs rounded-full border ${
         current === filter
           ? "bg-slate-900 text-white border-slate-900"
@@ -306,7 +306,7 @@ export function Pagination({
       <div className="flex gap-2">
         {page > 1 && (
           <Link
-            href={`${basePath}?type=${type}&filter=${filter}&page=${page - 1}`}
+            href={`${basePath}?mode=inline&type=${type}&filter=${filter}&page=${page - 1}`}
             className="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50"
           >
             Prev
@@ -314,7 +314,7 @@ export function Pagination({
         )}
         {hasNext && (
           <Link
-            href={`${basePath}?type=${type}&filter=${filter}&page=${page + 1}`}
+            href={`${basePath}?mode=inline&type=${type}&filter=${filter}&page=${page + 1}`}
             className="px-3 py-1 rounded border border-slate-300 hover:bg-slate-50"
           >
             Next
