@@ -8,7 +8,6 @@ import {
   generateForResource,
   generateMetaDescription,
   generateMetaTitle,
-  generateAltText,
 } from "@/lib/ai-generate";
 import {
   finishJob,
@@ -239,18 +238,9 @@ export async function bulkGenerateAltText(
   for (const img of images) {
     processed++;
     try {
-      const siblings = await prisma.image.findMany({
-        where: { resourceId: img.resourceId },
-        orderBy: { id: "asc" },
-        select: { id: true },
-      });
-      const position = siblings.findIndex((s) => s.id === img.id) + 1;
-      const value = await generateAltText({
-        productTitle: img.resource?.title ?? "",
-        productType: img.resource?.productType,
-        vendor: img.resource?.vendor,
-        position,
-      });
+      // Vision-based: looks at the actual photo, falls back to title-only
+      // inside generateForImage if the Vision call fails.
+      const value = await generateForImage(img.id);
       await updateImageAlt(img.id, value, "ai", "claude-haiku-4-5");
       saved++;
     } catch (e) {

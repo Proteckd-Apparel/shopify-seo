@@ -171,6 +171,29 @@ export async function generateForImage(imageId: string): Promise<string> {
     include: { resource: true },
   });
   if (!img) throw new Error("Image not found");
+
+  // Vision-based alt text: actually look at the photo and describe what's
+  // in it, grounded in the resource title. Falls back to the title-only
+  // generator if Vision throws (no image URL, fetch fails, etc.) so we
+  // still write *something* rather than failing the whole run.
+  if (img.src) {
+    try {
+      const { describeImageWithVision } = await import("./vision-ai");
+      const v = await describeImageWithVision(
+        img.src,
+        {
+          title: img.resource?.title,
+          vendor: img.resource?.vendor,
+          productType: img.resource?.productType,
+        },
+        { alt: true, filename: false },
+      );
+      if (v.altText) return v.altText;
+    } catch {
+      // fall through to title-only fallback
+    }
+  }
+
   // Position is roughly the index of this image in its resource — we don't
   // store an order column, so we just count.
   const siblings = await prisma.image.findMany({

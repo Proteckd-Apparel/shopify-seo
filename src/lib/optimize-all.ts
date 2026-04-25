@@ -4,7 +4,7 @@
 
 import { prisma } from "./prisma";
 import {
-  generateAltText,
+  generateForImage,
   generateMetaDescription,
   generateMetaTitle,
 } from "./ai-generate";
@@ -175,7 +175,8 @@ export async function runOptimizeAll(
         }
       }
 
-      // Alt text on images
+      // Alt text on images — Vision-based via generateForImage (looks at
+      // the actual photo, not just the resource title).
       if (rc.altTexts && r.images.length > 0) {
         for (let i = 0; i < r.images.length; i++) {
           const img = r.images[i];
@@ -183,12 +184,7 @@ export async function runOptimizeAll(
           if (!has || rc.altTextsOverwrite) {
             processed++;
             try {
-              const value = await generateAltText({
-                productTitle: r.title ?? "",
-                productType: r.productType,
-                vendor: r.vendor,
-                position: i + 1,
-              });
+              const value = await generateForImage(img.id);
               await updateImageAlt(img.id, value, "ai", "claude-haiku-4-5");
               saved++;
             } catch (e) {
