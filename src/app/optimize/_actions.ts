@@ -189,6 +189,7 @@ export async function bulkGenerateAltText(
   let processed = 0;
   let saved = 0;
   let failed = 0;
+  let firstError: string | null = null;
 
   const images = await prisma.image.findMany({
     where: onlyMissing
@@ -215,8 +216,11 @@ export async function bulkGenerateAltText(
       });
       await updateImageAlt(img.id, value, "ai", "claude-haiku-4-5");
       saved++;
-    } catch {
+    } catch (e) {
       failed++;
+      if (!firstError) {
+        firstError = e instanceof Error ? e.message : String(e);
+      }
     }
   }
 
@@ -228,6 +232,8 @@ export async function bulkGenerateAltText(
     saved,
     failed,
     message: `Processed ${processed} (saved ${saved}, failed ${failed}). ${
+      firstError ? `First error: ${firstError}. ` : ""
+    }${
       processed === 200 ? "Hit the 200-row safety cap — click again." : ""
     }`,
   };
