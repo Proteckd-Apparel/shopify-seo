@@ -148,8 +148,13 @@ async function bulkResource(
     ];
   }
 
+  // orderBy updatedAt asc ensures repeat clicks PROGRESS through the
+  // remainder instead of re-hitting the same 200 rows. After each
+  // successful update Resource.updatedAt = now, so processed rows sink
+  // to the bottom of the queue and untouched rows bubble up.
   let resources = await prisma.resource.findMany({
     where,
+    orderBy: { updatedAt: "asc" },
     take: onlyShort ? 5000 : 200,
   });
 
