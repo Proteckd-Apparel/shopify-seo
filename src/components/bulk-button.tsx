@@ -8,6 +8,7 @@ import {
   formatUsd,
   type AiOp,
 } from "@/lib/ai-pricing";
+import { JOB_LABELS, type JobKind } from "@/lib/bulk-job-shared";
 
 type BulkResult = {
   ok: boolean;
@@ -16,6 +17,48 @@ type BulkResult = {
   failed: number;
   message: string;
 };
+
+type RunningJobSnapshot = {
+  id: string;
+  kind: JobKind;
+  status: string;
+  progress: number;
+  total: number;
+} | null;
+
+// Single shared poller across every BulkButton on the page. Each button
+// subscribes; the poller only runs while at least one button is mounted.
+// 2s cadence matches the topbar pill — we're showing the same state.
+let pollerCount = 0;
+let pollerHandle: ReturnType<typeof setInterval> | null = null;
+let lastSnap: RunningJobSnapshot = null;
+const subscribers = new Set<(s: RunningJobSnapshot) => void>();
+async function tickPoller() {
+  try {
+    const res = await fetch("/api/bulk-job", { cache: "no-store" });
+    if (!res.ok) return;
+    const snap = (await res.json()) as RunningJobSnapshot;
+    lastSnap = snap;
+    subscribers.forEach((cb) => cb(snap));
+  } catch {}
+}
+function subscribeRunningJob(cb: (s: RunningJobSnapshot) => void) {
+  subscribers.add(cb);
+  pollerCount++;
+  cb(lastSnap);
+  if (!pollerHandle) {
+    tickPoller();
+    pollerHandle = setInterval(tickPoller, 2000);
+  }
+  return () => {
+    subscribers.delete(cb);
+    pollerCount--;
+    if (pollerCount === 0 && pollerHandle) {
+      clearInterval(pollerHandle);
+      pollerHandle = null;
+    }
+  };
+}
 
 export function BulkButton({
   label,
@@ -34,6 +77,7 @@ export function BulkButton({
 }) {
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<BulkResult | null>(null);
+  const [runningSnap, setRunningSnap] = useState<RunningJobSnapshot>(null);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -41,6 +85,29 @@ export function BulkButton({
       mounted.current = false;
     };
   }, []);
+
+  // Poll for any job currently running so we can disable this button
+  // when a different job is in flight (avoids two AI bulk jobs racing
+  // for Anthropic + Shopify rate limits, and matches the server-side
+  // guard in startJob).
+  useEffect(() => {
+    return subscribeRunningJob((s) => {
+      if (mounted.current) setRunningSnap(s);
+    });
+  }, []);
+
+  // "External" = a running job that ISN'T this button's own click.
+  // While our action is pending we already disable + show "Running…",
+  // so we only show the external-block UI when pending is false.
+  const externalRunning =
+    !pending && runningSnap && runningSnap.status === "running";
+  const externalLabel = externalRunning
+    ? JOB_LABELS[runningSnap!.kind] ?? runningSnap!.kind
+    : null;
+  const externalPct =
+    externalRunning && runningSnap!.total > 0
+      ? Math.round((runningSnap!.progress / runningSnap!.total) * 100)
+      : null;
 
   // Bulk actions cap at 2000 per click (see _actions.ts), so the worst
   // case is min(estimatedRows, 2000). Show that as the quote.
@@ -92,17 +159,28 @@ export function BulkButton({
       });
   }
 
+  const disabled = pending || !!externalRunning;
+
   return (
     <div className="flex items-center gap-3">
       <button
         type="button"
         onClick={run}
-        disabled={pending}
-        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-medium hover:opacity-95 disabled:opacity-60"
+        disabled={disabled}
+        title={
+          externalRunning
+            ? `Blocked — ${externalLabel} is running (${externalPct}%). Wait for it to finish.`
+            : undefined
+        }
+        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-medium hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed"
       >
         <Sparkles className="w-3.5 h-3.5" />
-        {pending ? "Running… (navigate freely)" : label}
-        {quoteUsd && (
+        {pending
+          ? "Running… (navigate freely)"
+          : externalRunning
+            ? `Wait — ${externalLabel} running (${externalPct}%)`
+            : label}
+        {quoteUsd && !externalRunning && (
           <span className="text-white/70 font-normal">~{quoteUsd}</span>
         )}
       </button>

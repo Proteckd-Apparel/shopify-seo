@@ -16,7 +16,27 @@ export {
 
 import type { JobKind } from "./bulk-job-shared";
 
+// Server actions cap at 10 min; anything in "running" past that died
+// mid-flight (Railway redeploy, crash) and shouldn't block new jobs.
+const STALE_AFTER_MS = 15 * 60 * 1000;
+
 export async function startJob(kind: JobKind, total: number) {
+  // Refuse to start if another non-stale job is already running. Two
+  // concurrent AI bulk jobs share the same Anthropic + Shopify rate
+  // limits and reliably throttle each other; one Shopify-write job at
+  // a time also keeps the catalog from getting into half-written
+  // states. The cleanup cron sweeps stale rows so they don't block
+  // forever.
+  const cutoff = new Date(Date.now() - STALE_AFTER_MS);
+  const conflicting = await prisma.jobRun.findFirst({
+    where: { status: "running", startedAt: { gte: cutoff } },
+    orderBy: { startedAt: "desc" },
+  });
+  if (conflicting) {
+    throw new Error(
+      `Another job is already running: ${conflicting.kind} (${conflicting.progress}/${conflicting.total}). Wait for it to finish, or dismiss it from the topbar pill if it's stuck.`,
+    );
+  }
   return prisma.jobRun.create({
     data: {
       kind,
