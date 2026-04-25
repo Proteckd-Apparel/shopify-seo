@@ -125,7 +125,11 @@ export async function setBoostImages(
 // Build the robots.txt.liquid that Shopify will render. We preserve Shopify's
 // default rules via the {%- for group in robots.default_groups -%} loop and
 // inject our custom rules into each matching group.
-function buildLiquid(rules: RobotsRule[], boostImages: boolean): string {
+function buildLiquid(
+  rules: RobotsRule[],
+  boostImages: boolean,
+  storefrontDomain: string,
+): string {
   // Group rules by user agent
   const byUa = new Map<string, RobotsRule[]>();
   for (const r of rules) {
@@ -193,7 +197,7 @@ ${list
   .join("\n")}
 {%- endfor -%}
 
-Sitemap: https://{{ shop.permanent_domain }}/sitemap.xml
+Sitemap: https://${storefrontDomain}/sitemap.xml
 ${customSitemaps}
 ${boostBlock}`;
 }
@@ -217,7 +221,14 @@ export async function applyToTheme(): Promise<{
     if (!theme) return { ok: false, message: "No main theme found" };
     const rules = await loadRules();
     const s = await prisma.settings.findUnique({ where: { id: 1 } });
-    const liquid = buildLiquid(rules, s?.robotsBoostImages ?? false);
+    const domain = (s?.storefrontDomain || s?.shopDomain || "").trim();
+    if (!domain) {
+      return {
+        ok: false,
+        message: "Set storefrontDomain or shopDomain in Settings first",
+      };
+    }
+    const liquid = buildLiquid(rules, s?.robotsBoostImages ?? false, domain);
     await writeThemeFile(theme.id, TEMPLATE_PATH, liquid);
     revalidatePath("/tools/robots-txt");
     return { ok: true, message: "robots.txt.liquid written to theme" };
@@ -252,7 +263,15 @@ export async function restoreDefault(): Promise<{
   try {
     const theme = await getMainTheme();
     if (!theme) return { ok: false, message: "No main theme" };
-    // Restore = Shopify defaults + Shopify's permanent sitemap once.
+    const s = await prisma.settings.findUnique({ where: { id: 1 } });
+    const domain = (s?.storefrontDomain || s?.shopDomain || "").trim();
+    if (!domain) {
+      return {
+        ok: false,
+        message: "Set storefrontDomain or shopDomain in Settings first",
+      };
+    }
+    // Restore = Shopify defaults + Shopify's sitemap once.
     // We avoid {{- group.sitemap -}} so we don't resurrect stale
     // app-sitemap registrations from previously-installed apps.
     const liquid = `# robots.txt
@@ -263,7 +282,7 @@ export async function restoreDefault(): Promise<{
   {%- endfor -%}
 {%- endfor -%}
 
-Sitemap: https://{{ shop.permanent_domain }}/sitemap.xml
+Sitemap: https://${domain}/sitemap.xml
 `;
     await writeThemeFile(theme.id, TEMPLATE_PATH, liquid);
     await prisma.settings.upsert({
