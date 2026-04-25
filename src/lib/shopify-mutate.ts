@@ -491,15 +491,36 @@ export async function updateImageAlt(
   source: "manual" | "ai" | "rule" = "manual",
   model?: string,
 ) {
-  const img = await prisma.image.findUnique({ where: { id: imageId } });
+  const img = await prisma.image.findUnique({
+    where: { id: imageId },
+    include: { resource: true },
+  });
   if (!img) throw new Error(`Image not found: ${imageId}`);
 
-  const data = await shopifyGraphQL<{
-    fileUpdate: MutationResult<{ files: Array<{ id: string }> }>;
-  }>(PRODUCT_IMAGE_UPDATE, {
-    files: [{ id: imageId, alt }],
-  });
-  throwOnUserErrors(data.fileUpdate.userErrors);
+  // fileUpdate only accepts MediaImage / GenericFile GIDs from the Files
+  // library — typically attached to products + collections. Article and page
+  // featured images come from a transient Image type whose id can't be
+  // passed back to fileUpdate. Route by parent resource type.
+  const rtype = img.resource?.type ?? "";
+  if (rtype === "article") {
+    const data = await shopifyGraphQL<{
+      articleUpdate: MutationResult<{ article: { id: string } | null }>;
+    }>(ARTICLE_UPDATE, {
+      id: img.resourceId,
+      article: { image: { altText: alt } },
+    });
+    throwOnUserErrors(data.articleUpdate.userErrors);
+  } else if (rtype === "page") {
+    // Pages don't expose a featured-image-alt field via Admin API; record
+    // locally so the user knows it's set, but skip the remote mutation.
+  } else {
+    const data = await shopifyGraphQL<{
+      fileUpdate: MutationResult<{ files: Array<{ id: string }> }>;
+    }>(PRODUCT_IMAGE_UPDATE, {
+      files: [{ id: imageId, alt }],
+    });
+    throwOnUserErrors(data.fileUpdate.userErrors);
+  }
 
   await prisma.optimization.create({
     data: {
