@@ -208,11 +208,12 @@ export async function runOptimizeAll(
       // quality / maxWidth) the user configured in optimizer settings.
       // Image.compressedAt is the source of truth for "already done";
       // images with it set are skipped so we never re-compress and never
-      // churn the CDN URL twice. Only product images are supported by
-      // compressOne — collections / articles / pages skip silently.
+      // churn the CDN URL twice. Products go through the file-swap pipe;
+      // articles + collections use stage-upload + parent-update mutations.
+      // Pages are still skipped (Shopify Admin API has no page image input).
       if (
         rc.compressPhotos &&
-        rk === "products" &&
+        (rk === "products" || rk === "articles" || rk === "collections") &&
         r.images.length > 0
       ) {
         for (const img of r.images) {

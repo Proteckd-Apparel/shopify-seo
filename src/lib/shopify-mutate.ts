@@ -537,3 +537,116 @@ export async function updateImageAlt(
     data: { altText: alt },
   });
 }
+
+// ---------- Featured-image replace for articles + collections ----------
+//
+// Articles and collections each carry a single ImageInput on the parent
+// resource (Article.image, Collection.image), not a separate MediaImage
+// file in the Files library. To swap the image with our compressed bytes,
+// we stage-upload the bytes (Shopify gives us a resource URL their backend
+// can fetch from), then call articleUpdate / collectionUpdate with that
+// URL as the new image.src. Shopify takes care of creating its own CDN
+// copy and minting a new image GID; we read the new URL out of the
+// mutation response and return it.
+
+const ARTICLE_UPDATE_WITH_IMAGE = /* GraphQL */ `
+  mutation ArticleUpdate($id: ID!, $article: ArticleUpdateInput!) {
+    articleUpdate(id: $id, article: $article) {
+      article { id image { id url width height altText } }
+      userErrors { field message }
+    }
+  }
+`;
+
+const COLLECTION_UPDATE_WITH_IMAGE = /* GraphQL */ `
+  mutation CollectionUpdate($input: CollectionInput!) {
+    collectionUpdate(input: $input) {
+      collection { id image { id url width height altText } }
+      userErrors { field message }
+    }
+  }
+`;
+
+export type ReplacedImage = {
+  id: string;
+  url: string;
+  width: number | null;
+  height: number | null;
+  altText: string | null;
+};
+
+export async function replaceArticleImageBytes(args: {
+  articleId: string;
+  bytes: Buffer;
+  filename: string;
+  contentType: string;
+  altText?: string | null;
+}): Promise<ReplacedImage> {
+  const { stageBytes } = await import("./shopify-file-swap");
+  const { resourceUrl } = await stageBytes(
+    args.bytes,
+    args.filename,
+    args.contentType,
+  );
+  const data = await shopifyGraphQL<{
+    articleUpdate: MutationResult<{
+      article: {
+        id: string;
+        image: {
+          id: string;
+          url: string;
+          width: number | null;
+          height: number | null;
+          altText: string | null;
+        } | null;
+      } | null;
+    }>;
+  }>(ARTICLE_UPDATE_WITH_IMAGE, {
+    id: args.articleId,
+    article: {
+      image: { src: resourceUrl, altText: args.altText ?? "" },
+    },
+  });
+  throwOnUserErrors(data.articleUpdate.userErrors);
+  const img = data.articleUpdate.article?.image;
+  if (!img) throw new Error("articleUpdate returned no image");
+  return img;
+}
+
+export async function replaceCollectionImageBytes(args: {
+  collectionId: string;
+  bytes: Buffer;
+  filename: string;
+  contentType: string;
+  altText?: string | null;
+}): Promise<ReplacedImage> {
+  const { stageBytes } = await import("./shopify-file-swap");
+  const { resourceUrl } = await stageBytes(
+    args.bytes,
+    args.filename,
+    args.contentType,
+  );
+  const data = await shopifyGraphQL<{
+    collectionUpdate: MutationResult<{
+      collection: {
+        id: string;
+        image: {
+          id: string;
+          url: string;
+          width: number | null;
+          height: number | null;
+          altText: string | null;
+        } | null;
+      } | null;
+    }>;
+  }>(COLLECTION_UPDATE_WITH_IMAGE, {
+    input: {
+      id: args.collectionId,
+      image: { src: resourceUrl, altText: args.altText ?? "" },
+    },
+  });
+  throwOnUserErrors(data.collectionUpdate.userErrors);
+  const img = data.collectionUpdate.collection?.image;
+  if (!img) throw new Error("collectionUpdate returned no image");
+  return img;
+}

@@ -109,11 +109,13 @@ export async function compressOne(
     });
     if (!img || !img.resource)
       return { ok: false, message: "Image not found" };
-    if (img.resource.type !== "product")
+    const rtype = img.resource.type;
+    if (rtype !== "product" && rtype !== "article" && rtype !== "collection") {
       return {
         ok: false,
-        message: "Only product images supported in this build",
+        message: `Compression not supported for resource type: ${rtype}`,
       };
+    }
 
     const { buffer, bytes: originalBytes } = await fetchOriginalBytes(img.src);
 
@@ -161,32 +163,88 @@ export async function compressOne(
         ? base // keep filename, just change extension
         : base;
 
-    // Use the file swap pipeline with the COMPRESSED bytes — but our current
-    // renameProductImage downloads from the original URL. We need a variant
-    // that takes raw bytes. Inline the logic here for now using lower-level
-    // helpers.
-    const newUrl = await replaceImageWithBytes({
-      productId: img.resource.id,
-      oldImageUrl: img.src,
-      newFilename: newSlug,
-      newExt: settings.format === "jpeg" ? "jpg" : settings.format,
-      bytes: compressed.buffer,
-      altText: visionAlt ?? img.altText,
-    });
-
-    // Update local cache. compressedAt stamps this run so optimize-all
-    // skips re-compressing on the next pass — avoids generational quality
-    // loss + CDN URL churn.
-    await prisma.image.update({
-      where: { id: img.id },
-      data: {
-        src: newUrl,
+    // Branch by resource type. Products use the file-swap pipeline that
+    // creates a new MediaImage + deletes the old one. Articles and
+    // collections each have a single Image scalar on the parent — we
+    // stage-upload the compressed bytes and call articleUpdate /
+    // collectionUpdate so Shopify mints a new image and we read the new
+    // URL back from the response.
+    const ext = settings.format === "jpeg" ? "jpg" : settings.format;
+    const fullFilename = `${newSlug}.${ext}`;
+    const contentType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+    let newUrl: string;
+    let newImageId: string | null = null;
+    let newWidth: number | null = compressed.width || img.width;
+    let newHeight: number | null = compressed.height || img.height;
+    if (rtype === "product") {
+      newUrl = await replaceImageWithBytes({
+        productId: img.resource.id,
+        oldImageUrl: img.src,
+        newFilename: newSlug,
+        newExt: ext,
+        bytes: compressed.buffer,
         altText: visionAlt ?? img.altText,
-        width: compressed.width || img.width,
-        height: compressed.height || img.height,
-        compressedAt: new Date(),
-      },
-    });
+      });
+    } else if (rtype === "article") {
+      const { replaceArticleImageBytes } = await import("@/lib/shopify-mutate");
+      const replaced = await replaceArticleImageBytes({
+        articleId: img.resource.id,
+        bytes: compressed.buffer,
+        filename: fullFilename,
+        contentType,
+        altText: visionAlt ?? img.altText,
+      });
+      newUrl = replaced.url;
+      newImageId = replaced.id;
+      newWidth = replaced.width ?? newWidth;
+      newHeight = replaced.height ?? newHeight;
+    } else {
+      // collection
+      const { replaceCollectionImageBytes } = await import("@/lib/shopify-mutate");
+      const replaced = await replaceCollectionImageBytes({
+        collectionId: img.resource.id,
+        bytes: compressed.buffer,
+        filename: fullFilename,
+        contentType,
+        altText: visionAlt ?? img.altText,
+      });
+      newUrl = replaced.url;
+      newImageId = replaced.id;
+      newWidth = replaced.width ?? newWidth;
+      newHeight = replaced.height ?? newHeight;
+    }
+
+    // Update local cache. For products the Image GID stays stable (the
+    // local id is the parent product's MediaImage id we keep through the
+    // swap). For articles + collections, Shopify mints a new image GID
+    // when we update the parent — so we delete the old Image row and
+    // upsert a new one tied to the same resource. compressedAt stamps the
+    // new row so optimize-all skips re-compressing on the next pass.
+    if (rtype === "product" || newImageId === null || newImageId === img.id) {
+      await prisma.image.update({
+        where: { id: img.id },
+        data: {
+          src: newUrl,
+          altText: visionAlt ?? img.altText,
+          width: newWidth,
+          height: newHeight,
+          compressedAt: new Date(),
+        },
+      });
+    } else {
+      await prisma.image.delete({ where: { id: img.id } });
+      await prisma.image.create({
+        data: {
+          id: newImageId,
+          resourceId: img.resourceId,
+          src: newUrl,
+          altText: visionAlt ?? img.altText,
+          width: newWidth,
+          height: newHeight,
+          compressedAt: new Date(),
+        },
+      });
+    }
 
     // Audit log
     await prisma.optimization.create({
