@@ -163,11 +163,17 @@ model Image {
   width        Int?
   height       Int?
   bytes        Int?
+  // Stamped when compressOne (or the auto-optimize compress phase) successfully
+  // re-encodes this image. Auto-optimize skips images with this set so we never
+  // re-compress already-processed photos (avoids generational quality loss +
+  // CDN URL churn). Cleared on a fresh scan if the image's src changes.
+  compressedAt DateTime?
   updatedAt    DateTime @default(now()) @updatedAt
   resource     Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
 
   @@index([resourceId])
   @@index([updatedAt])
+  @@index([compressedAt])
 }
 
 // ---------- Scans ----------

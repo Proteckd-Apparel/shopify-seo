@@ -174,7 +174,9 @@ export async function compressOne(
       altText: visionAlt ?? img.altText,
     });
 
-    // Update local cache
+    // Update local cache. compressedAt stamps this run so optimize-all
+    // skips re-compressing on the next pass — avoids generational quality
+    // loss + CDN URL churn.
     await prisma.image.update({
       where: { id: img.id },
       data: {
@@ -182,6 +184,7 @@ export async function compressOne(
         altText: visionAlt ?? img.altText,
         width: compressed.width || img.width,
         height: compressed.height || img.height,
+        compressedAt: new Date(),
       },
     });
 

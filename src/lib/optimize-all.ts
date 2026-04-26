@@ -10,6 +10,7 @@ import {
 } from "./ai-generate";
 import { loadOptimizerConfig, type ResourceConfig } from "./optimizer-config";
 import { updateImageAlt, updateResourceSeo } from "./shopify-mutate";
+import { compressOne } from "@/app/optimize/compress-photos/actions";
 
 type ResourceKey = "products" | "collections" | "articles" | "pages";
 const SINGULAR: Record<ResourceKey, string> = {
@@ -200,6 +201,51 @@ export async function runOptimizeAll(
               phase: `${rk}:alt`,
             });
           }
+        }
+      }
+
+      // Photo compression — uses the global compressPhotosCfg (format /
+      // quality / maxWidth) the user configured in optimizer settings.
+      // Image.compressedAt is the source of truth for "already done";
+      // images with it set are skipped so we never re-compress and never
+      // churn the CDN URL twice. Only product images are supported by
+      // compressOne — collections / articles / pages skip silently.
+      if (
+        rc.compressPhotos &&
+        rk === "products" &&
+        r.images.length > 0
+      ) {
+        for (const img of r.images) {
+          if (img.compressedAt) continue;
+          processed++;
+          try {
+            const result = await compressOne(img.id, {
+              format: cfg.compressPhotosCfg.format,
+              quality: cfg.compressPhotosCfg.quality,
+              maxWidth: cfg.compressPhotosCfg.maxWidth,
+              visionAlt: false,
+              visionRename: false,
+              overwriteExistingAlts: false,
+              doNotReoptimize: true,
+            });
+            if (result.ok) {
+              saved++;
+            } else {
+              failed++;
+              pushLog(`Compress fail ${img.id}: ${result.message}`);
+            }
+          } catch (e) {
+            failed++;
+            pushLog(
+              `Compress fail ${img.id}: ${e instanceof Error ? e.message : "?"}`,
+            );
+          }
+          onProgress?.({
+            processed,
+            saved,
+            failed,
+            phase: `${rk}:compress`,
+          });
         }
       }
     }

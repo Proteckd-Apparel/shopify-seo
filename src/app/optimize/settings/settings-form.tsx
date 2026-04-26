@@ -311,6 +311,86 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
         </div>
       </Card>
 
+      {/* Compress photos config — affects the auto-optimize compress phase
+          across products / collections / articles when "Compress Photos"
+          is toggled on in their section. Single global settings; users
+          who want per-resource quality can use the Compress Photos page
+          directly. compressedAt on Image keeps already-done images from
+          being re-encoded. */}
+      <Card title="Compress Photos (auto-optimize)">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Field label="Format">
+            <select
+              value={cfg.compressPhotosCfg.format}
+              onChange={(e) =>
+                setCfg((c) => ({
+                  ...c,
+                  compressPhotosCfg: {
+                    ...c.compressPhotosCfg,
+                    format: e.target.value as "webp" | "avif" | "jpeg",
+                  },
+                }))
+              }
+              className="px-3 py-1 text-sm border border-slate-200 rounded bg-white"
+            >
+              <option value="webp">WebP (recommended)</option>
+              <option value="avif">AVIF (smallest, slower)</option>
+              <option value="jpeg">JPEG (broadest support)</option>
+            </select>
+          </Field>
+          <Field
+            label={`Quality: ${cfg.compressPhotosCfg.quality}`}
+            hint="60 = small/aggressive, 80 = sweet spot, 90 = visually lossless"
+          >
+            <input
+              type="range"
+              min={40}
+              max={95}
+              step={1}
+              value={cfg.compressPhotosCfg.quality}
+              onChange={(e) =>
+                setCfg((c) => ({
+                  ...c,
+                  compressPhotosCfg: {
+                    ...c.compressPhotosCfg,
+                    quality: parseInt(e.target.value, 10),
+                  },
+                }))
+              }
+              className="w-full"
+            />
+          </Field>
+          <Field
+            label="Max width (px)"
+            hint="Images wider than this get downscaled. 2000px is fine for most stores."
+          >
+            <input
+              type="number"
+              min={800}
+              max={4000}
+              step={100}
+              value={cfg.compressPhotosCfg.maxWidth}
+              onChange={(e) =>
+                setCfg((c) => ({
+                  ...c,
+                  compressPhotosCfg: {
+                    ...c.compressPhotosCfg,
+                    maxWidth: parseInt(e.target.value, 10) || 2000,
+                  },
+                }))
+              }
+              className="px-3 py-1 text-sm border border-slate-200 rounded bg-white w-full"
+            />
+          </Field>
+        </div>
+        <div className="text-xs text-slate-500 mt-3">
+          Each image is compressed once. After a successful compress,
+          Image.compressedAt is stamped and auto-optimize skips that photo
+          on every future run — no quality loss from repeat encoding, no
+          CDN URL churn.
+        </div>
+      </Card>
+
       {/* Skip rules */}
       <Card title="Skip Rules">
         <Field

@@ -115,6 +115,21 @@ export type TemplateMap = Partial<
   Record<TemplatePurpose, Partial<Record<TemplateScopeKey, TemplateConfig>>>
 >;
 
+// Knobs for the compress phase that runs inside Optimize All. Single
+// global config (not per-resource-type) to keep the UI simple — most
+// users want the same quality across products / articles / collections.
+export type CompressPhotosConfig = {
+  format: "webp" | "avif" | "jpeg";
+  quality: number; // 1-100, sane range 60-90
+  maxWidth: number; // px, 1200-3000 typical
+};
+
+export const DEFAULT_COMPRESS_PHOTOS_CONFIG: CompressPhotosConfig = {
+  format: "webp",
+  quality: 80,
+  maxWidth: 2000,
+};
+
 export type OptimizerConfig = {
   // Global
   masterAutoOptimize: boolean;
@@ -165,6 +180,9 @@ export type OptimizerConfig = {
     articles: UrlOptimizerConfig;
     pages: UrlOptimizerConfig;
   };
+  // Compress phase settings — used by the Optimize All loop when a
+  // resource section has compressPhotos: true.
+  compressPhotosCfg: CompressPhotosConfig;
 };
 
 const DEFAULT_RESOURCE_CONFIG: ResourceConfig = {
@@ -252,6 +270,7 @@ export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
     articles: { ...DEFAULT_URL_CONFIG, scope: "all" },
     pages: { ...DEFAULT_URL_CONFIG },
   },
+  compressPhotosCfg: { ...DEFAULT_COMPRESS_PHOTOS_CONFIG },
 };
 
 export function getTemplate(
@@ -318,6 +337,10 @@ export async function loadOptimizerConfig(): Promise<OptimizerConfig> {
             ...DEFAULT_OPTIMIZER_CONFIG.jsonLd.other,
             ...(parsed.jsonLd?.other ?? {}),
           },
+        },
+        compressPhotosCfg: {
+          ...DEFAULT_OPTIMIZER_CONFIG.compressPhotosCfg,
+          ...(parsed.compressPhotosCfg ?? {}),
         },
       };
     }
