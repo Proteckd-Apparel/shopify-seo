@@ -291,28 +291,28 @@ export type BulkTranslateResult = {
   failed: number;
 };
 
-export async function bulkTranslateResources(
+// Internal worker shared by the per-type and all-types entry points.
+// Caller passes a JobRun.id so progress is reported into the same row,
+// letting one all-types run show a single contiguous progress bar across
+// all 4 phases instead of starting a new JobRun for each.
+async function translateBulkInner(
   resourceType: "product" | "collection" | "article" | "page",
-): Promise<BulkTranslateResult> {
-  const myLocales = await getTranslatorLocales();
-  if (myLocales.length === 0)
-    return {
-      ok: false,
-      message: "No translator locales configured",
-      processed: 0,
-      saved: 0,
-      failed: 0,
-    };
-
+  jobId: string,
+  startedAt: { processed: number; saved: number; failed: number; firstError: string | null },
+): Promise<{ processed: number; saved: number; failed: number; firstError: string | null }> {
   const resources = await prisma.resource.findMany({
     where: { type: resourceType },
-    take: 200, // safety cap
+    take: 200, // safety cap per type per click
   });
-
-  let processed = 0;
-  let saved = 0;
-  let failed = 0;
-  let firstError: string | null = null;
+  const { setProgress, setTotal } = await import("@/lib/bulk-job");
+  // Bump the JobRun's total so the progress bar's denominator includes
+  // this phase's resources. The all-types wrapper calls this 4 times in
+  // a row, each time growing the total.
+  await setTotal(
+    jobId,
+    startedAt.processed + resources.length,
+  );
+  let { processed, saved, failed, firstError } = startedAt;
   for (const r of resources) {
     processed++;
     try {
@@ -328,18 +328,58 @@ export async function bulkTranslateResources(
       if (!firstError) firstError = msg;
       console.error(`[translate ${resourceType}] ${r.handle ?? r.id}: ${msg}`);
     }
+    // Update progress on every iteration. translateOneResource takes
+    // multiple seconds (one Claude call per field per locale) so the
+    // 1-2s polling cadence of BulkProgressBar will show frequent ticks.
+    await setProgress(jobId, processed);
   }
+  return { processed, saved, failed, firstError };
+}
+
+export async function bulkTranslateResources(
+  resourceType: "product" | "collection" | "article" | "page",
+): Promise<BulkTranslateResult> {
+  const myLocales = await getTranslatorLocales();
+  if (myLocales.length === 0)
+    return {
+      ok: false,
+      message: "No translator locales configured",
+      processed: 0,
+      saved: 0,
+      failed: 0,
+    };
+
+  const { startJob, finishJob } = await import("@/lib/bulk-job");
+  const job = await startJob("translations", 0);
+  let result = { processed: 0, saved: 0, failed: 0, firstError: null as string | null };
+  try {
+    result = await translateBulkInner(resourceType, job.id, result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await finishJob(job.id, { ok: false, error: msg });
+    return {
+      ok: false,
+      message: msg,
+      processed: result.processed,
+      saved: result.saved,
+      failed: result.failed,
+    };
+  }
+  await finishJob(job.id, {
+    ok: result.failed === 0,
+    error: result.firstError ?? undefined,
+  });
 
   revalidatePath("/optimize/translations");
   return {
-    ok: failed === 0,
+    ok: result.failed === 0,
     message:
-      `Processed ${processed} (saved ${saved}, failed ${failed})` +
-      (firstError ? ` — First error: ${firstError}` : "") +
-      (processed === 200 ? " — hit 200 cap, run again for more" : ""),
-    processed,
-    saved,
-    failed,
+      `Processed ${result.processed} (saved ${result.saved}, failed ${result.failed})` +
+      (result.firstError ? ` — First error: ${result.firstError}` : "") +
+      (result.processed === 200 ? " — hit 200 cap, run again for more" : ""),
+    processed: result.processed,
+    saved: result.saved,
+    failed: result.failed,
   };
 }
 
@@ -369,41 +409,50 @@ export async function bulkTranslateAllTypes(): Promise<
     string,
     { processed: number; saved: number; failed: number }
   > = {};
-  let totalProcessed = 0;
-  let totalSaved = 0;
-  let totalFailed = 0;
-  let firstError: string | null = null;
-
-  for (const type of types) {
-    const r = await bulkTranslateResources(type);
-    perType[type] = {
-      processed: r.processed,
-      saved: r.saved,
-      failed: r.failed,
-    };
-    totalProcessed += r.processed;
-    totalSaved += r.saved;
-    totalFailed += r.failed;
-    // bulkTranslateResources now appends "First error: ..." to its
-    // message when there's a failure. Capture the first one for the
-    // wrapper response.
-    if (!firstError && r.message?.includes("First error:")) {
-      firstError = r.message.split("First error:")[1]?.trim() ?? null;
+  // Single JobRun across all 4 phases so the topbar pill + progress bar
+  // show one continuous run instead of 4 starts/finishes.
+  const { startJob, finishJob } = await import("@/lib/bulk-job");
+  const job = await startJob("translations", 0);
+  let agg = { processed: 0, saved: 0, failed: 0, firstError: null as string | null };
+  try {
+    for (const type of types) {
+      const before = { ...agg };
+      agg = await translateBulkInner(type, job.id, agg);
+      perType[type] = {
+        processed: agg.processed - before.processed,
+        saved: agg.saved - before.saved,
+        failed: agg.failed - before.failed,
+      };
     }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await finishJob(job.id, { ok: false, error: msg });
+    return {
+      ok: false,
+      message: msg,
+      processed: agg.processed,
+      saved: agg.saved,
+      failed: agg.failed,
+      perType,
+    };
   }
+  await finishJob(job.id, {
+    ok: agg.failed === 0,
+    error: agg.firstError ?? undefined,
+  });
 
   revalidatePath("/optimize/translations");
   return {
-    ok: totalFailed === 0,
+    ok: agg.failed === 0,
     message:
-      `Done. ${totalProcessed} processed, ${totalSaved} translated, ${totalFailed} failed across ` +
+      `Done. ${agg.processed} processed, ${agg.saved} translated, ${agg.failed} failed across ` +
       types
         .map((t) => `${t}s: ${perType[t].saved}/${perType[t].processed}`)
         .join(", ") +
-      (firstError ? ` — First error: ${firstError}` : ""),
-    processed: totalProcessed,
-    saved: totalSaved,
-    failed: totalFailed,
+      (agg.firstError ? ` — First error: ${agg.firstError}` : ""),
+    processed: agg.processed,
+    saved: agg.saved,
+    failed: agg.failed,
     perType,
   };
 }

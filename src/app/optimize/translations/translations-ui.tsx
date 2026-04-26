@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { BulkProgressBar } from "@/components/bulk-progress-bar";
 import {
   bulkTranslateAllTypes,
   bulkTranslateResources,
@@ -24,6 +25,18 @@ export function TranslationsUI({
   );
   const [coverage, setCoverage] = useState<CoverageRow[] | null>(null);
   const [pending, start] = useTransition();
+  // Separate pending state for fire-and-forget bulk translates so they
+  // don't block navigation. The translate buttons set bulkRunning=true
+  // and call the action without awaiting in a transition; the topbar
+  // pill + BulkProgressBar below show progress while it runs.
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [msg, setMsg] = useState<string | null>(null);
   const [scope, setScope] = useState<
     "product" | "collection" | "article" | "page"
@@ -74,15 +87,25 @@ export function TranslationsUI({
     }
     if (
       !confirm(
-        `Translate all ${scope}s into ${myLocales.size} locale(s)?\n\nUses Claude credits (~$0.0005 per 1k chars). Capped at 200 ${scope}s per click.`,
+        `Translate all ${scope}s into ${myLocales.size} locale(s)?\n\nUses Claude credits (~$0.0005 per 1k chars). Capped at 200 ${scope}s per click.\n\nFeel free to navigate — the job keeps running on the server. Watch the progress bar below.`,
       )
     )
       return;
     setMsg(null);
-    start(async () => {
-      const r = await bulkTranslateResources(scope);
-      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
-    });
+    setBulkRunning(true);
+    bulkTranslateResources(scope)
+      .then((r) => {
+        if (mounted.current) {
+          setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+          setBulkRunning(false);
+        }
+      })
+      .catch((e) => {
+        if (mounted.current) {
+          setMsg("❌ " + (e instanceof Error ? e.message : "Failed"));
+          setBulkRunning(false);
+        }
+      });
   }
 
   function bulkRunAllTypes() {
@@ -92,15 +115,25 @@ export function TranslationsUI({
     }
     if (
       !confirm(
-        `Translate EVERY resource type (products + collections + articles + pages) into ${myLocales.size} locale(s)?\n\nWalks all 4 types sequentially, 200 cap per type per click. Idempotent — repeat clicks pick up where the last one left off via Shopify's "outdated" flag. Total cost depends on catalog size; first full run is typically $2-5 in Claude credits.`,
+        `Translate EVERY resource type (products + collections + articles + pages) into ${myLocales.size} locale(s)?\n\nWalks all 4 types sequentially, 200 cap per type per click. Idempotent — repeat clicks pick up where the last one left off via Shopify's "outdated" flag.\n\nFeel free to navigate — the job keeps running on the server. Watch the progress bar below.`,
       )
     )
       return;
     setMsg(null);
-    start(async () => {
-      const r = await bulkTranslateAllTypes();
-      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
-    });
+    setBulkRunning(true);
+    bulkTranslateAllTypes()
+      .then((r) => {
+        if (mounted.current) {
+          setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+          setBulkRunning(false);
+        }
+      })
+      .catch((e) => {
+        if (mounted.current) {
+          setMsg("❌ " + (e instanceof Error ? e.message : "Failed"));
+          setBulkRunning(false);
+        }
+      });
   }
 
   if (!locales.ok) {
@@ -275,23 +308,27 @@ export function TranslationsUI({
         </button>
       </div>
 
+      <BulkProgressBar kind="translations" />
+
       <div className="sticky bottom-4 bg-white border border-slate-200 rounded-lg p-3 flex flex-wrap items-center gap-2 shadow-lg">
         <button
           type="button"
           onClick={bulkRun}
-          disabled={pending}
+          disabled={bulkRunning}
           className="px-4 py-1.5 rounded bg-white border border-indigo-300 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-60"
         >
-          {pending ? "Working…" : `Translate all ${scope}s`}
+          {bulkRunning ? "Running… (navigate freely)" : `Translate all ${scope}s`}
         </button>
         <button
           type="button"
           onClick={bulkRunAllTypes}
-          disabled={pending}
+          disabled={bulkRunning}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
           title="Walks products → collections → articles → pages in one click"
         >
-          {pending ? "Working…" : "Translate everything (all types)"}
+          {bulkRunning
+            ? "Running… (navigate freely)"
+            : "Translate everything (all types)"}
         </button>
         {msg && (
           <span className="basis-full text-xs text-slate-700 mt-1">

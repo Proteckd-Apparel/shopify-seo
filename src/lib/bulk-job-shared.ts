@@ -11,7 +11,8 @@ export type JobKind =
   | "scan"
   | "meta_titles"
   | "meta_descriptions"
-  | "alt_text";
+  | "alt_text"
+  | "translations";
 
 // Human-readable labels for the global running-job indicator.
 export const JOB_LABELS: Record<JobKind, string> = {
@@ -24,6 +25,7 @@ export const JOB_LABELS: Record<JobKind, string> = {
   meta_titles: "Meta titles",
   meta_descriptions: "Meta descriptions",
   alt_text: "Alt text",
+  translations: "Translations",
 };
 
 // Where to deep-link from the topbar pill to the page that owns the job.
@@ -37,4 +39,5 @@ export const JOB_HREFS: Record<JobKind, string> = {
   meta_titles: "/optimize/meta-titles?mode=inline",
   meta_descriptions: "/optimize/meta-descriptions?mode=inline",
   alt_text: "/optimize/alt-texts?mode=inline",
+  translations: "/optimize/translations",
 };
