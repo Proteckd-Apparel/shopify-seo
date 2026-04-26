@@ -27,6 +27,21 @@ const META_TITLE_MAX = 60;
 const META_DESC_MIN = 70;
 const META_DESC_MAX = 160;
 
+// Per-resource-type minimum image widths. Mirrors scanner.ts so the
+// dashboard tile and the scan issue list never disagree about what
+// counts as low-res. Articles + pages can use smaller body images
+// without being flagged; product / collection imagery needs to be
+// large enough for zoom + detail.
+const MIN_IMAGE_WIDTH: Record<string, number> = {
+  product: 1000,
+  collection: 1000,
+  article: 500,
+  page: 600,
+};
+function minImageWidthFor(type: string): number {
+  return MIN_IMAGE_WIDTH[type] ?? 800;
+}
+
 export async function computeStats(): Promise<StatGroup[]> {
   const types = ["product", "collection", "article", "page"] as const;
   const groups: StatGroup[] = [];
@@ -98,8 +113,9 @@ export async function computeStats(): Promise<StatGroup[]> {
       (i.altText ?? "").trim(),
     ).length;
     const photosMissingAlt = totalPhotos - photosWithAlt;
+    const lowResThreshold = minImageWidthFor(type);
     const lowResPhotos = allImages.filter(
-      (i) => (i.width ?? Number.POSITIVE_INFINITY) < 800,
+      (i) => (i.width ?? Number.POSITIVE_INFINITY) < lowResThreshold,
     ).length;
     const altLens = allImages
       .map((i) => (i.altText ?? "").length)
@@ -163,7 +179,7 @@ export async function computeStats(): Promise<StatGroup[]> {
         value: lowResPhotos,
         group: "Photos",
         tone: lowResPhotos === 0 ? "good" : "bad",
-        hint: "Width < 800px",
+        hint: `Width < ${lowResThreshold}px`,
         href: lowResPhotos > 0 ? "/optimize/upscale-photos" : undefined,
         fixHint: lowResPhotos > 0 ? "Upscale via AI" : undefined,
       },

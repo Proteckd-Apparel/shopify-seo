@@ -56,7 +56,35 @@ const META_TITLE_MIN = 25;
 const META_TITLE_MAX = 60;
 const META_DESC_MIN = 70;
 const META_DESC_MAX = 160;
-const MIN_IMAGE_WIDTH = 800;
+// Per-resource-type minimum widths. The single 800px threshold was too
+// aggressive — most blog post inline images are intentionally 600-768px
+// (plenty for body content, smaller files, faster load) and were being
+// flagged as "low-resolution" alongside actually-broken 200-300px images.
+//
+// New thresholds reflect what each surface actually needs:
+//   - Product / collection images: 1000+ (zoom, detail shots)
+//   - Article inline images: 500+ (body content, often via Unsplash)
+//   - Page images: 600+ (mostly hero / about-us shots)
+const MIN_IMAGE_WIDTH_PRODUCT = 1000;
+const MIN_IMAGE_WIDTH_COLLECTION = 1000;
+const MIN_IMAGE_WIDTH_ARTICLE = 500;
+const MIN_IMAGE_WIDTH_PAGE = 600;
+const MIN_IMAGE_WIDTH_DEFAULT = 800;
+
+function minImageWidthFor(type: string): number {
+  switch (type) {
+    case "product":
+      return MIN_IMAGE_WIDTH_PRODUCT;
+    case "collection":
+      return MIN_IMAGE_WIDTH_COLLECTION;
+    case "article":
+      return MIN_IMAGE_WIDTH_ARTICLE;
+    case "page":
+      return MIN_IMAGE_WIDTH_PAGE;
+    default:
+      return MIN_IMAGE_WIDTH_DEFAULT;
+  }
+}
 
 function checkMetaTitle(
   resourceId: string,
@@ -137,8 +165,10 @@ function checkImages(
   resourceId: string,
   url: string | null,
   images: ShopifyImage[],
+  resourceType: string,
 ): IssueDraft[] {
   const issues: IssueDraft[] = [];
+  const minWidth = minImageWidthFor(resourceType);
   for (const img of images) {
     if (!img.altText || img.altText.trim() === "") {
       issues.push({
@@ -149,12 +179,12 @@ function checkImages(
         url,
       });
     }
-    if (img.width && img.width < MIN_IMAGE_WIDTH) {
+    if (img.width && img.width < minWidth) {
       issues.push({
         resourceId,
         category: "image_size",
         severity: "info",
-        message: `Low-resolution image (${img.width}px wide): ${img.url}`,
+        message: `Low-resolution image (${img.width}px wide, ${resourceType} target ${minWidth}+): ${img.url}`,
         url,
       });
     }
@@ -369,7 +399,7 @@ export async function runScan(
       const issues: IssueDraft[] = [
         ...checkMetaTitle(p.id, url, p.title, p.seo?.title ?? null),
         ...checkMetaDescription(p.id, url, p.seo?.description ?? null),
-        ...checkImages(p.id, url, p.images),
+        ...checkImages(p.id, url, p.images, "product"),
         ...checkBody(p.id, url, p.descriptionHtml, "Product"),
       ];
       await persistIssues(issues);
@@ -403,7 +433,7 @@ export async function runScan(
       const issues: IssueDraft[] = [
         ...checkMetaTitle(c.id, url, c.title, c.seo?.title ?? null),
         ...checkMetaDescription(c.id, url, c.seo?.description ?? null),
-        ...checkImages(c.id, url, c.image ? [c.image] : []),
+        ...checkImages(c.id, url, c.image ? [c.image] : [], "collection"),
         ...checkBody(c.id, url, c.descriptionHtml, "Collection"),
       ];
       await persistIssues(issues);
@@ -474,7 +504,7 @@ export async function runScan(
 
       const issues: IssueDraft[] = [
         ...checkMetaTitle(a.id, null, a.title, a.title),
-        ...checkImages(a.id, null, a.image ? [a.image] : []),
+        ...checkImages(a.id, null, a.image ? [a.image] : [], "article"),
         ...checkBody(a.id, null, a.body, "Article"),
       ];
       await persistIssues(issues);
