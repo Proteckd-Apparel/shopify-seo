@@ -651,3 +651,118 @@ export async function searchImagesForCompressPicker(q: string) {
     src: img.src,
   }));
 }
+
+// ---------- Compress status diagnostic ----------
+//
+// Counts images by compressed-or-not, plus surfaces evidence of past
+// manual compress runs from the Optimization audit log. Used by the
+// compress-photos page to tell the user how much work is left vs. how
+// much was already done before Image.compressedAt was added.
+
+export type CompressStatus = {
+  totalImages: number;
+  trackedCompressed: number; // images with compressedAt set (post-migration)
+  inferredCompressed: number; // images whose CDN URL ends .webp / .avif
+  pastOptimizationRuns: number; // # of compressPhoto rows in audit log
+  uniqueResourcesCompressedHistorically: number;
+  remaining: number; // total - tracked - inferred (rough upper bound)
+};
+
+export async function getCompressStatus(): Promise<CompressStatus> {
+  const totalImages = await prisma.image.count({
+    where: { resource: { type: "product" } },
+  });
+  const trackedCompressed = await prisma.image.count({
+    where: {
+      resource: { type: "product" },
+      compressedAt: { not: null },
+    },
+  });
+  const inferredCompressed = await prisma.image.count({
+    where: {
+      resource: { type: "product" },
+      compressedAt: null,
+      OR: [
+        { src: { contains: ".webp" } },
+        { src: { contains: ".avif" } },
+      ],
+    },
+  });
+  const pastOptimizationRuns = await prisma.optimization.count({
+    where: { field: "compressPhoto" },
+  });
+  const uniqueRows = await prisma.optimization.findMany({
+    where: { field: "compressPhoto" },
+    select: { resourceId: true },
+    distinct: ["resourceId"],
+  });
+  const remaining = Math.max(
+    0,
+    totalImages - trackedCompressed - inferredCompressed,
+  );
+  return {
+    totalImages,
+    trackedCompressed,
+    inferredCompressed,
+    pastOptimizationRuns,
+    uniqueResourcesCompressedHistorically: uniqueRows.length,
+    remaining,
+  };
+}
+
+// One-shot backfill: stamp compressedAt on every image that's already
+// in WebP / AVIF format (CDN URL ends in those extensions). Skips
+// images that already have compressedAt set. Lets the user catch the
+// system up after a manual compress run that happened before the
+// compressedAt column existed.
+export type BackfillResult = {
+  ok: boolean;
+  message: string;
+  updated: number;
+};
+
+export async function backfillCompressedAt(): Promise<BackfillResult> {
+  try {
+    // Two passes: format-based + audit-log-based. Both use the same
+    // updatedAt timestamp to keep things deterministic.
+    const stamp = new Date();
+    // Pass 1: format inference
+    const formatResult = await prisma.image.updateMany({
+      where: {
+        compressedAt: null,
+        OR: [
+          { src: { contains: ".webp" } },
+          { src: { contains: ".avif" } },
+        ],
+      },
+      data: { compressedAt: stamp },
+    });
+    // Pass 2: audit-log inference. Find every resource that has at
+    // least one compressPhoto Optimization row and stamp its images.
+    const optRows = await prisma.optimization.findMany({
+      where: { field: "compressPhoto" },
+      select: { resourceId: true },
+      distinct: ["resourceId"],
+    });
+    const auditResult = await prisma.image.updateMany({
+      where: {
+        compressedAt: null,
+        resourceId: { in: optRows.map((o) => o.resourceId) },
+      },
+      data: { compressedAt: stamp },
+    });
+    const updated = formatResult.count + auditResult.count;
+    revalidatePath("/optimize/compress-photos");
+    return {
+      ok: true,
+      message: `Backfilled ${updated} images (${formatResult.count} by format, ${auditResult.count} by audit log).`,
+      updated,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: e instanceof Error ? e.message : "Failed",
+      updated: 0,
+    };
+  }
+}

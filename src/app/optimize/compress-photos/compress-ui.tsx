@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Sparkles, RotateCcw, Search } from "lucide-react";
 import {
+  backfillCompressedAt,
   compressAll,
   compressOne,
+  getCompressStatus,
   restoreFromBackup,
   searchImagesForCompressPicker,
   testCompressOne,
+  type CompressStatus,
 } from "./actions";
 import {
   DEFAULT_COMPRESS_SETTINGS,
@@ -23,6 +26,30 @@ export function CompressUI() {
   const [test, setTest] = useState<TestResult | null>(null);
   const [pickerOpen, setPickerOpen] = useState<null | "test" | "apply">(null);
   const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+  const [status, setStatus] = useState<CompressStatus | null>(null);
+
+  // Load compress status on mount + after any action that might change it.
+  useEffect(() => {
+    getCompressStatus().then(setStatus).catch(() => {});
+  }, []);
+  function refreshStatus() {
+    getCompressStatus().then(setStatus).catch(() => {});
+  }
+
+  function runBackfill() {
+    if (
+      !confirm(
+        "Mark all already-compressed images as done?\n\nDetects images by:\n  1. CDN URL ending in .webp / .avif (already in modern format)\n  2. Past compress runs in the audit log (Optimization rows)\n\nAfter this, auto-optimize will skip these images forever. Safe to run multiple times.",
+      )
+    )
+      return;
+    setBulkMsg(null);
+    start(async () => {
+      const r = await backfillCompressedAt();
+      setBulkMsg((r.ok ? "✅ " : "❌ ") + r.message);
+      refreshStatus();
+    });
+  }
 
   function patch(p: Partial<CompressSettings>) {
     setSettings({ ...settings, ...p });
@@ -85,6 +112,65 @@ export function CompressUI() {
         attaches to the product, deletes the old. Same swap pattern as Photo
         Filenames. Restore works for 60 minutes after each run.
       </div>
+
+      {status && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4">
+          <div className="text-xs uppercase tracking-wider text-slate-600 font-semibold mb-2">
+            Compress status
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div>
+              <div className="text-2xl font-semibold text-slate-900">
+                {status.totalImages}
+              </div>
+              <div className="text-xs text-slate-500">Total product images</div>
+            </div>
+            <div>
+              <div className="text-2xl font-semibold text-emerald-700">
+                {status.trackedCompressed}
+              </div>
+              <div className="text-xs text-slate-500">Tracked compressed</div>
+            </div>
+            <div>
+              <div className="text-2xl font-semibold text-sky-700">
+                {status.inferredCompressed}
+              </div>
+              <div className="text-xs text-slate-500">
+                .webp / .avif on CDN (looks compressed)
+              </div>
+            </div>
+            <div>
+              <div className="text-2xl font-semibold text-amber-700">
+                {status.remaining}
+              </div>
+              <div className="text-xs text-slate-500">Probably remaining</div>
+            </div>
+          </div>
+          {status.pastOptimizationRuns > 0 && (
+            <div className="mt-3 text-xs text-slate-600">
+              Audit log: <strong>{status.pastOptimizationRuns}</strong> compress
+              events recorded across <strong>{status.uniqueResourcesCompressedHistorically}</strong> resources.
+            </div>
+          )}
+          {status.remaining > 0 || status.trackedCompressed === 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={runBackfill}
+                disabled={pending}
+                className="px-3 py-1.5 rounded bg-slate-900 text-white text-xs hover:bg-slate-800 disabled:opacity-60"
+              >
+                Mark already-compressed images as done
+              </button>
+              <span className="text-xs text-slate-500">
+                Auto-optimize will then skip them forever. Use this if you
+                compressed images outside the system or before this app
+                tracked compressedAt.
+              </span>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       <div className="bg-white border border-slate-200 rounded-lg">
         <div className="px-5 py-3 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-600 font-semibold">
