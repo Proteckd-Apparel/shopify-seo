@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { OptimizerConfig, ResourceConfig } from "@/lib/optimizer-config";
-import { disableAllOverwrites, saveConfig } from "./actions";
+import { saveConfig, setAllOverwrites } from "./actions";
 
 type ResourceKey = "products" | "collections" | "articles" | "pages";
 
@@ -54,49 +54,77 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
     });
   }
 
-  function disableOverwrites() {
+  // Derived state: ON if ANY per-field *Overwrite flag is true across any
+  // resource type. The toggle reflects "is overwrite happening anywhere?"
+  // so a single ON light warns you that auto-runs may rewrite curated
+  // copy, even if only one section/field has overwrite enabled.
+  const anyOverwriteOn =
+    cfg.products.metaTitlesOverwrite ||
+    cfg.products.metaDescriptionsOverwrite ||
+    cfg.products.altTextsOverwrite ||
+    cfg.products.htmlTextOverwrite ||
+    cfg.collections.metaTitlesOverwrite ||
+    cfg.collections.metaDescriptionsOverwrite ||
+    cfg.collections.altTextsOverwrite ||
+    cfg.collections.htmlTextOverwrite ||
+    cfg.articles.metaTitlesOverwrite ||
+    cfg.articles.metaDescriptionsOverwrite ||
+    cfg.articles.altTextsOverwrite ||
+    cfg.articles.htmlTextOverwrite ||
+    cfg.pages.metaTitlesOverwrite ||
+    cfg.pages.metaDescriptionsOverwrite ||
+    cfg.pages.altTextsOverwrite ||
+    cfg.pages.htmlTextOverwrite;
+
+  function toggleOverwriteAll(next: boolean) {
     if (
+      next &&
       !confirm(
-        "Turn OFF every OVERWRITE toggle across products, collections, articles, and pages?\n\nResult: auto-optimize will only fill empty fields. Existing meta titles, descriptions, alt texts, and HTML text stay untouched. This is the recommended setup for ongoing automation.",
+        "Turn ON overwrite for ALL fields across products, collections, articles, and pages?\n\nWarning: auto-optimize will regenerate every meta title, meta description, alt text, and body HTML on every run — including ones you've already curated.\n\nUsually you only want this for a one-time refresh after improving your AI rules / brand voice. For ongoing automation, leave this OFF.",
+      )
+    )
+      return;
+    if (
+      !next &&
+      !confirm(
+        "Turn OFF every OVERWRITE toggle?\n\nAuto-optimize will then only fill empty fields. Existing curated copy stays untouched. This is the recommended setup for ongoing automation.",
       )
     )
       return;
     setMsg(null);
     startTransition(async () => {
-      const r = await disableAllOverwrites();
+      const r = await setAllOverwrites(next);
       setMsg(r.message);
       if (r.ok) {
-        // Mirror the saved state into local form state so the toggles
-        // visually update without a page refresh.
         setCfg((c) => ({
           ...c,
           products: {
             ...c.products,
-            metaTitlesOverwrite: false,
-            metaDescriptionsOverwrite: false,
-            altTextsOverwrite: false,
-            htmlTextOverwrite: false,
+            metaTitlesOverwrite: next,
+            metaDescriptionsOverwrite: next,
+            altTextsOverwrite: next,
+            htmlTextOverwrite: next,
           },
           collections: {
             ...c.collections,
-            metaTitlesOverwrite: false,
-            metaDescriptionsOverwrite: false,
-            altTextsOverwrite: false,
-            htmlTextOverwrite: false,
+            metaTitlesOverwrite: next,
+            metaDescriptionsOverwrite: next,
+            altTextsOverwrite: next,
+            htmlTextOverwrite: next,
           },
           articles: {
             ...c.articles,
-            metaTitlesOverwrite: false,
-            metaDescriptionsOverwrite: false,
-            altTextsOverwrite: false,
-            htmlTextOverwrite: false,
+            metaTitlesOverwrite: next,
+            metaDescriptionsOverwrite: next,
+            altTextsOverwrite: next,
+            htmlTextOverwrite: next,
           },
           pages: {
             ...c.pages,
-            metaTitlesOverwrite: false,
-            metaDescriptionsOverwrite: false,
-            altTextsOverwrite: false,
-            htmlTextOverwrite: false,
+            metaTitlesOverwrite: next,
+            metaDescriptionsOverwrite: next,
+            altTextsOverwrite: next,
+            htmlTextOverwrite: next,
           },
         }));
       }
@@ -123,29 +151,38 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
         />
       </div>
 
-      {/* Quick-action: disable overwrites everywhere. Recommended setup
-          for ongoing auto-optimize: empty fields get AI-filled on new
-          products / posts; existing curated copy is never touched. */}
+      {/* Master overwrite toggle. Reflects whether ANY per-field
+          overwrite flag is on across all four resource types — so a
+          single ON light tells you auto-runs may rewrite curated copy.
+          Click to flip every flag at once. Per-field overwrite pills
+          below stay editable for advanced control. */}
       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex items-center justify-between">
         <div>
-          <div className="font-semibold text-slate-900 text-sm">
-            Fill missing only (don&apos;t overwrite existing)
+          <div className="font-semibold text-slate-900 text-sm flex items-center gap-2">
+            Overwrite existing values
+            <span
+              className={`text-[10px] font-normal px-2 py-0.5 rounded ${
+                anyOverwriteOn
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-emerald-100 text-emerald-700"
+              }`}
+            >
+              {anyOverwriteOn ? "ON — will regenerate curated copy" : "OFF — fill missing only"}
+            </span>
           </div>
           <div className="text-xs text-slate-600 mt-1">
-            Turns off every OVERWRITE toggle across all four resource
-            types. Auto-optimize will then only fill empty fields on
-            new resources and skip anything you&apos;ve already set.
-            Recommended once your catalog is curated.
+            ON = auto-optimize regenerates every meta title, description,
+            alt text, and body across all resource types on every run.
+            OFF = only empty fields get filled, your curated copy is never
+            touched. Recommended OFF for ongoing automation. Individual
+            OVERWRITE pills below stay editable if you need finer control.
           </div>
         </div>
-        <button
-          type="button"
-          onClick={disableOverwrites}
+        <Toggle
+          checked={anyOverwriteOn}
+          onChange={toggleOverwriteAll}
           disabled={pending}
-          className="ml-4 shrink-0 px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 disabled:opacity-60"
-        >
-          Disable all overwrite
-        </button>
+        />
       </div>
 
       {/* AI brand voice */}
@@ -421,19 +458,22 @@ function Field({
 function Toggle({
   checked,
   onChange,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative w-10 h-5 rounded-full transition-colors ${
         checked ? "bg-indigo-600" : "bg-slate-300"
-      }`}
+      } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow ${

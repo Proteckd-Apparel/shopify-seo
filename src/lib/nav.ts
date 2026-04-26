@@ -127,6 +127,12 @@ export const NAV: NavSection[] = [
         icon: Eye,
       },
       {
+        slug: "coverage",
+        title: "SEO Coverage",
+        description: "Per-resource matrix of which fields are filled vs missing.",
+        icon: ListChecks,
+      },
+      {
         slug: "serp-rankings",
         title: "SERP Rankings",
         description: "Position tracking for chosen keywords.",
