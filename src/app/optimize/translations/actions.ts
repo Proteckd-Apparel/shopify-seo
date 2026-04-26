@@ -312,23 +312,31 @@ export async function bulkTranslateResources(
   let processed = 0;
   let saved = 0;
   let failed = 0;
+  let firstError: string | null = null;
   for (const r of resources) {
     processed++;
     try {
       const result = await translateOneResource(r.id);
       if (result.ok) saved++;
-      else failed++;
-    } catch {
+      else {
+        failed++;
+        if (!firstError && result.message) firstError = result.message;
+      }
+    } catch (e) {
       failed++;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!firstError) firstError = msg;
+      console.error(`[translate ${resourceType}] ${r.handle ?? r.id}: ${msg}`);
     }
   }
 
   revalidatePath("/optimize/translations");
   return {
     ok: failed === 0,
-    message: `Processed ${processed} (saved ${saved}, failed ${failed})${
-      processed === 200 ? " — hit 200 cap, run again for more" : ""
-    }`,
+    message:
+      `Processed ${processed} (saved ${saved}, failed ${failed})` +
+      (firstError ? ` — First error: ${firstError}` : "") +
+      (processed === 200 ? " — hit 200 cap, run again for more" : ""),
     processed,
     saved,
     failed,
@@ -364,6 +372,7 @@ export async function bulkTranslateAllTypes(): Promise<
   let totalProcessed = 0;
   let totalSaved = 0;
   let totalFailed = 0;
+  let firstError: string | null = null;
 
   for (const type of types) {
     const r = await bulkTranslateResources(type);
@@ -375,6 +384,12 @@ export async function bulkTranslateAllTypes(): Promise<
     totalProcessed += r.processed;
     totalSaved += r.saved;
     totalFailed += r.failed;
+    // bulkTranslateResources now appends "First error: ..." to its
+    // message when there's a failure. Capture the first one for the
+    // wrapper response.
+    if (!firstError && r.message?.includes("First error:")) {
+      firstError = r.message.split("First error:")[1]?.trim() ?? null;
+    }
   }
 
   revalidatePath("/optimize/translations");
@@ -384,7 +399,8 @@ export async function bulkTranslateAllTypes(): Promise<
       `Done. ${totalProcessed} processed, ${totalSaved} translated, ${totalFailed} failed across ` +
       types
         .map((t) => `${t}s: ${perType[t].saved}/${perType[t].processed}`)
-        .join(", "),
+        .join(", ") +
+      (firstError ? ` — First error: ${firstError}` : ""),
     processed: totalProcessed,
     saved: totalSaved,
     failed: totalFailed,
