@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  bulkTranslateAllTypes,
   bulkTranslateResources,
   scanTranslationCoverage,
   saveTranslatorLocales,
@@ -80,6 +81,24 @@ export function TranslationsUI({
     setMsg(null);
     start(async () => {
       const r = await bulkTranslateResources(scope);
+      setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+    });
+  }
+
+  function bulkRunAllTypes() {
+    if (myLocales.size === 0) {
+      setMsg("Pick at least one locale to translate to");
+      return;
+    }
+    if (
+      !confirm(
+        `Translate EVERY resource type (products + collections + articles + pages) into ${myLocales.size} locale(s)?\n\nWalks all 4 types sequentially, 200 cap per type per click. Idempotent — repeat clicks pick up where the last one left off via Shopify's "outdated" flag. Total cost depends on catalog size; first full run is typically $2-5 in Claude credits.`,
+      )
+    )
+      return;
+    setMsg(null);
+    start(async () => {
+      const r = await bulkTranslateAllTypes();
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
     });
   }
@@ -261,9 +280,18 @@ export function TranslationsUI({
           type="button"
           onClick={bulkRun}
           disabled={pending}
-          className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
+          className="px-4 py-1.5 rounded bg-white border border-indigo-300 text-indigo-700 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-60"
         >
           {pending ? "Working…" : `Translate all ${scope}s`}
+        </button>
+        <button
+          type="button"
+          onClick={bulkRunAllTypes}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
+          title="Walks products → collections → articles → pages in one click"
+        >
+          {pending ? "Working…" : "Translate everything (all types)"}
         </button>
         {msg && (
           <span className="basis-full text-xs text-slate-700 mt-1">

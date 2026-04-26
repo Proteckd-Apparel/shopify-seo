@@ -334,3 +334,60 @@ export async function bulkTranslateResources(
     failed,
   };
 }
+
+// Translates every resource type (products + collections + articles +
+// pages) into all configured target locales. Each type internally
+// caps at 200 per call so the worst-case total is 800 resources per
+// click. translateOneResource skips fields that already have a
+// non-outdated translation, so repeat clicks are cheap and progressive.
+export async function bulkTranslateAllTypes(): Promise<
+  BulkTranslateResult & {
+    perType: Record<string, { processed: number; saved: number; failed: number }>;
+  }
+> {
+  const myLocales = await getTranslatorLocales();
+  if (myLocales.length === 0)
+    return {
+      ok: false,
+      message: "No translator locales configured",
+      processed: 0,
+      saved: 0,
+      failed: 0,
+      perType: {},
+    };
+
+  const types = ["product", "collection", "article", "page"] as const;
+  const perType: Record<
+    string,
+    { processed: number; saved: number; failed: number }
+  > = {};
+  let totalProcessed = 0;
+  let totalSaved = 0;
+  let totalFailed = 0;
+
+  for (const type of types) {
+    const r = await bulkTranslateResources(type);
+    perType[type] = {
+      processed: r.processed,
+      saved: r.saved,
+      failed: r.failed,
+    };
+    totalProcessed += r.processed;
+    totalSaved += r.saved;
+    totalFailed += r.failed;
+  }
+
+  revalidatePath("/optimize/translations");
+  return {
+    ok: totalFailed === 0,
+    message:
+      `Done. ${totalProcessed} processed, ${totalSaved} translated, ${totalFailed} failed across ` +
+      types
+        .map((t) => `${t}s: ${perType[t].saved}/${perType[t].processed}`)
+        .join(", "),
+    processed: totalProcessed,
+    saved: totalSaved,
+    failed: totalFailed,
+    perType,
+  };
+}
