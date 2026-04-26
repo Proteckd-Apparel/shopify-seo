@@ -249,6 +249,84 @@ export async function runOptimizeAll(
           });
         }
       }
+
+      // HTML body cleanup — deterministic by default (alt text from
+      // filename, lazyload, link titles, empty <p> removal). AI rewrite
+      // only fires if the user explicitly enabled it on the cleanup
+      // config for this resource type. applyCleanupToOne is idempotent
+      // — calling it on already-clean HTML is a no-op (returns "No
+      // changes to apply" without writing to Shopify).
+      if (rc.htmlText && r.bodyHtml) {
+        processed++;
+        try {
+          const { applyCleanupToOne } = await import(
+            "@/app/optimize/main-html-text/actions"
+          );
+          const result = await applyCleanupToOne(rk, r.id);
+          if (result.ok && result.message !== "No changes to apply") {
+            saved++;
+          }
+        } catch (e) {
+          failed++;
+          pushLog(
+            `HTML cleanup fail ${r.handle ?? r.id}: ${e instanceof Error ? e.message : "?"}`,
+          );
+        }
+        onProgress?.({ processed, saved, failed, phase: `${rk}:html` });
+      }
+
+      // H1 title cleanup — strips <br>, normalizes whitespace. Only
+      // touches the customer-visible title if changes are detected.
+      // AI rewrite gated on cfg.titles[scope].aiRewrite (off by default).
+      if (rc.titles) {
+        processed++;
+        try {
+          const { applyTitleToOne } = await import(
+            "@/app/optimize/titles/actions"
+          );
+          const { getTemplate } = await import("@/lib/optimizer-config");
+          const titleCfg = cfg.titles[rk];
+          const titleTemplate = getTemplate(cfg, "title", rk);
+          const result = await applyTitleToOne(
+            rk,
+            titleTemplate,
+            titleCfg,
+            r.id,
+          );
+          if (result.ok && result.message !== "No change needed") {
+            saved++;
+          }
+        } catch (e) {
+          failed++;
+          pushLog(
+            `Title cleanup fail ${r.handle ?? r.id}: ${e instanceof Error ? e.message : "?"}`,
+          );
+        }
+        onProgress?.({ processed, saved, failed, phase: `${rk}:title` });
+      }
+
+      // Translations — only writes to non-primary locales for fields
+      // that are missing or outdated. Primary (English) content is
+      // never touched. No-op if translatorLocales isn't configured on
+      // /optimize/translations.
+      if (rc.translations) {
+        processed++;
+        try {
+          const { translateOneResource } = await import(
+            "@/app/optimize/translations/actions"
+          );
+          const result = await translateOneResource(r.id);
+          if (result.ok && (result.fields ?? 0) > 0) {
+            saved++;
+          }
+        } catch (e) {
+          failed++;
+          pushLog(
+            `Translate fail ${r.handle ?? r.id}: ${e instanceof Error ? e.message : "?"}`,
+          );
+        }
+        onProgress?.({ processed, saved, failed, phase: `${rk}:translate` });
+      }
     }
   }
 
