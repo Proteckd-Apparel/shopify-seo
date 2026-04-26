@@ -254,6 +254,7 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
                         }
                       : undefined
                   }
+                  overwriteLocked={!anyOverwriteOn}
                 />
               ))}
             </div>
@@ -489,11 +490,17 @@ function ToggleRow({
   checked,
   onChange,
   overwrite,
+  overwriteLocked = false,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
   overwrite?: { checked: boolean; onChange: (v: boolean) => void };
+  // When the master "Overwrite existing values" toggle is OFF, individual
+  // OVERWRITE pills are visually disabled + clicks blocked. Keeps the
+  // master toggle authoritative so users can't accidentally re-enable
+  // overwrite on a single field after globally turning it off.
+  overwriteLocked?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-2 text-sm">
@@ -502,13 +509,23 @@ function ToggleRow({
         {checked && overwrite && (
           <button
             type="button"
-            onClick={() => overwrite.onChange(!overwrite.checked)}
+            onClick={() => {
+              if (overwriteLocked) return;
+              overwrite.onChange(!overwrite.checked);
+            }}
+            disabled={overwriteLocked}
             className={`text-[9px] uppercase font-bold px-1.5 py-0.5 rounded ${
-              overwrite.checked
-                ? "bg-red-100 text-red-700"
-                : "bg-slate-100 text-slate-500"
+              overwriteLocked
+                ? "bg-slate-100 text-slate-300 cursor-not-allowed"
+                : overwrite.checked
+                  ? "bg-red-100 text-red-700"
+                  : "bg-slate-100 text-slate-500"
             }`}
-            title="Overwrite existing values when running"
+            title={
+              overwriteLocked
+                ? "Master overwrite toggle is OFF — flip it ON above to enable per-field overwrite"
+                : "Overwrite existing values when running"
+            }
           >
             Overwrite
           </button>
