@@ -152,7 +152,7 @@ function localeName(code: string): string {
   return LOCALE_NAMES[code] ?? code;
 }
 
-async function translateBatch(
+async function translateBatchOnce(
   values: Array<{ key: string; text: string }>,
   targetLocale: string,
   sourceLocale: string,
@@ -178,7 +178,7 @@ async function translateBatch(
 
   const res = await client.messages.create({
     model: MODELS.fast,
-    max_tokens: 4000,
+    max_tokens: 16000,
     system,
     messages: [{ role: "user", content: user }],
   });
@@ -198,6 +198,39 @@ async function translateBatch(
     if (typeof v === "string") out.set(k, v);
   }
   return out;
+}
+
+// Wrap translateBatchOnce with a per-field salvage retry. If the batch
+// call returns malformed JSON (truncation, unescaped quote in a body_html,
+// etc.), translate each field individually so one bad field can't lose
+// the rest. A single-field call that still fails is logged and skipped.
+async function translateBatch(
+  values: Array<{ key: string; text: string }>,
+  targetLocale: string,
+  sourceLocale: string,
+): Promise<Map<string, string>> {
+  if (values.length === 0) return new Map();
+  try {
+    return await translateBatchOnce(values, targetLocale, sourceLocale);
+  } catch (e) {
+    if (values.length === 1) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(
+      `[translateBatch] ${targetLocale} batch of ${values.length} failed (${msg}) — retrying per-field`,
+    );
+    const out = new Map<string, string>();
+    for (const v of values) {
+      try {
+        const single = await translateBatchOnce([v], targetLocale, sourceLocale);
+        const got = single.get(v.key);
+        if (got) out.set(v.key, got);
+      } catch (inner) {
+        const im = inner instanceof Error ? inner.message : String(inner);
+        console.error(`[translateBatch] ${targetLocale}/${v.key} skipped: ${im}`);
+      }
+    }
+    return out;
+  }
 }
 
 // ---------- Translate one resource into all enabled locales ----------
@@ -238,35 +271,48 @@ export async function translateOneResource(
     if (wanted.length === 0)
       return { ok: false, message: "No translatable fields" };
 
-    let totalFields = 0;
-    for (const target of myLocales) {
-      const existing = tr.translations.filter((t) => t.locale === target);
-      // Skip fields that already have a non-outdated translation
-      const todo = wanted.filter((w) => {
-        const ex = existing.find((t) => t.key === w.key);
-        return !ex || ex.outdated;
-      });
-      if (todo.length === 0) continue;
-      const translated = await translateBatch(
-        todo.map((w) => ({ key: w.key, text: w.value })),
-        target,
-        primary,
-      );
-      const inputs: TranslationInput[] = [];
-      for (const w of todo) {
-        const v = translated.get(w.key);
-        if (!v) continue;
-        inputs.push({
-          key: w.key,
-          locale: target,
-          value: v,
-          translatableContentDigest: w.digest,
+    // Run all target locales in parallel for this resource. Each locale
+    // is independent (separate Claude call + separate registerTranslations
+    // mutation), so allSettled lets a single locale's failure (rate limit,
+    // bad JSON salvage exhausted, Shopify mutation error) record as a
+    // partial success instead of failing the whole resource.
+    const perLocale = await Promise.allSettled(
+      myLocales.map(async (target) => {
+        const existing = tr.translations.filter((t) => t.locale === target);
+        const todo = wanted.filter((w) => {
+          const ex = existing.find((t) => t.key === w.key);
+          return !ex || ex.outdated;
         });
-      }
-      if (inputs.length > 0) {
+        if (todo.length === 0) return 0;
+        const translated = await translateBatch(
+          todo.map((w) => ({ key: w.key, text: w.value })),
+          target,
+          primary,
+        );
+        const inputs: TranslationInput[] = [];
+        for (const w of todo) {
+          const v = translated.get(w.key);
+          if (!v) continue;
+          inputs.push({
+            key: w.key,
+            locale: target,
+            value: v,
+            translatableContentDigest: w.digest,
+          });
+        }
+        if (inputs.length === 0) return 0;
         await registerTranslations(resourceId, inputs);
-        totalFields += inputs.length;
-      }
+        return inputs.length;
+      }),
+    );
+    let totalFields = 0;
+    for (const r of perLocale) {
+      if (r.status === "fulfilled") totalFields += r.value;
+      else
+        console.error(
+          `[translateOneResource] ${resourceId} locale failed:`,
+          r.reason instanceof Error ? r.reason.message : r.reason,
+        );
     }
 
     revalidatePath("/optimize/translations");
