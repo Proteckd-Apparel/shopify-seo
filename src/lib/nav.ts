@@ -368,6 +368,13 @@ export const NAV: NavSection[] = [
         icon: Files,
       },
       {
+        slug: "recover-images",
+        title: "Recover Broken Images",
+        description:
+          "Find broken cdn.shopify.com URLs in body HTML and rewrite to surviving Files by filename prefix.",
+        icon: ImageOff,
+      },
+      {
         slug: "image-editor",
         title: "Image Editor (Files)",
         description: "Edit images stored in Shopify Files.",
