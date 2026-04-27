@@ -32,9 +32,29 @@ export function RedirectsManager({ initial }: { initial: Redirect[] }) {
   function remove(id: string) {
     if (!confirm("Delete this redirect?")) return;
     start(async () => {
+      // First pass without force — server checks the 404 log and refuses
+      // with needsConfirm=true if real customer traffic still hits this
+      // redirect's path. Show that count, then re-prompt.
       const r = await deleteRedirectAction(id);
-      if (r.ok) setList(list.filter((x) => x.id !== id));
-      else setMsg(r.message);
+      if (r.ok) {
+        setList(list.filter((x) => x.id !== id));
+        return;
+      }
+      if (r.needsConfirm) {
+        if (
+          confirm(
+            `${r.message}\n\nDelete anyway? Customers hitting this URL will see a 404 page.`,
+          )
+        ) {
+          const forced = await deleteRedirectAction(id, true);
+          if (forced.ok) setList(list.filter((x) => x.id !== id));
+          else setMsg(forced.message);
+        } else {
+          setMsg("Cancelled");
+        }
+        return;
+      }
+      setMsg(r.message);
     });
   }
 

@@ -248,6 +248,21 @@ export async function bulkApplyUrls(
 
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
 
+  // Skip resources whose handle was changed in the last 30 days. Each
+  // handle change creates a Shopify 301 from old → new; chaining a second
+  // change creates 301a → 301b → current, which Google penalizes past 2
+  // hops. Building the lookup map up front (one query) is cheaper than
+  // querying per-resource inside the loop.
+  const recentHandleChanges = await prisma.optimization.findMany({
+    where: {
+      field: "handle",
+      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      resourceId: { in: items.map((r) => r.id) },
+    },
+    select: { resourceId: true },
+  });
+  const recentlyChanged = new Set(recentHandleChanges.map((o) => o.resourceId));
+
   let processed = 0;
   let saved = 0;
   let failed = 0;
@@ -256,6 +271,11 @@ export async function bulkApplyUrls(
   for (const r of items) {
     processed++;
     try {
+      if (recentlyChanged.has(r.id)) {
+        // Handle changed within the last 30 days — refuse to chain.
+        skipped++;
+        continue;
+      }
       const rendered =
         template.tokens.length > 0
           ? renderTemplate(template, {

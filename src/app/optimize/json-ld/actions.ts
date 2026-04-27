@@ -619,19 +619,11 @@ export async function applySiteWideSchemas(): Promise<ApplyResult> {
     const shopGid = info.shop?.id;
     if (!shopGid) return { ok: false, message: "Could not resolve shop GID" };
 
-    await ensureJsonMetafieldDefinition(
-      "SHOP",
-      "custom",
-      "json_ld_sitewide",
-      "JSON-LD Site-wide",
-    );
-    await setMetafield({
-      ownerId: shopGid,
-      namespace: "custom",
-      key: "json_ld_sitewide",
-      type: "json",
-      value: JSON.stringify(schemas),
-    });
+    // setSitewideJsonLd snapshots the prior shop metafield to ImageBackup
+    // (synthetic theme-file resourceId) before overwriting, so a bad
+    // schema array can be rolled back from the restore-backups tool.
+    const { setSitewideJsonLd } = await import("@/lib/shopify-metafields");
+    await setSitewideJsonLd(shopGid, schemas);
     revalidatePath("/optimize/json-ld");
     return {
       ok: true,

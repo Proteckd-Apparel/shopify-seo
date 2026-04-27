@@ -2,7 +2,73 @@
 // Used by the JSON-LD writer to put the generated schema into a metafield
 // that the theme reads.
 
+import { prisma } from "./prisma";
 import { shopifyGraphQL } from "./shopify";
+
+const METAFIELD_READ = /* GraphQL */ `
+  query MetafieldRead(
+    $ownerId: ID!
+    $namespace: String!
+    $key: String!
+  ) {
+    node(id: $ownerId) {
+      ... on Product { metafield(namespace: $namespace, key: $key) { value } }
+      ... on Collection { metafield(namespace: $namespace, key: $key) { value } }
+      ... on Article { metafield(namespace: $namespace, key: $key) { value } }
+      ... on Shop { metafield(namespace: $namespace, key: $key) { value } }
+    }
+  }
+`;
+
+async function readMetafieldValue(
+  ownerId: string,
+  namespace: string,
+  key: string,
+): Promise<string | null> {
+  try {
+    const data = await shopifyGraphQL<{
+      node: { metafield: { value: string } | null } | null;
+    }>(METAFIELD_READ, { ownerId, namespace, key });
+    return data.node?.metafield?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Snapshot-and-write wrapper for arbitrary metafields. Reads the prior
+// value, writes an Optimization audit row tagged with the
+// namespace/key, then performs the write. Used by callers that want the
+// same recovery story setJsonLd has but for non-JSON-LD metafields
+// (e.g. custom.faqs, custom.google_merchant_copy).
+export async function setMetafieldWithAudit(
+  input: MetafieldInput,
+): Promise<void> {
+  const prior = await readMetafieldValue(
+    input.ownerId,
+    input.namespace,
+    input.key,
+  );
+  await setMetafield(input);
+  try {
+    const exists = await prisma.resource.findUnique({
+      where: { id: input.ownerId },
+      select: { id: true },
+    });
+    if (exists && prior !== input.value) {
+      await prisma.optimization.create({
+        data: {
+          resourceId: input.ownerId,
+          field: `metafield:${input.namespace}.${input.key}`,
+          oldValue: prior,
+          newValue: input.value,
+          source: "rule",
+        },
+      });
+    }
+  } catch {
+    // Audit best-effort.
+  }
+}
 
 const METAFIELDS_SET = /* GraphQL */ `
   mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
@@ -106,12 +172,81 @@ export async function setJsonLd(
       ? "ARTICLE"
       : "PRODUCT";
   await ensureJsonMetafieldDefinition(ownerType);
+
+  // Snapshot the prior metafield value into the Optimization audit log
+  // before overwriting. Bad JSON / wrong shape / mis-applied schema can
+  // de-rank the resource in Google; the oldValue row is the rollback.
+  const prior = await readMetafieldValue(ownerId, "custom", "json_ld");
+  const next = JSON.stringify(schema);
   await setMetafield({
     ownerId,
     namespace: "custom",
     key: "json_ld",
     type: "json",
-    value: JSON.stringify(schema),
+    value: next,
+  });
+  // Only record audit rows for resources we actually have locally —
+  // SHOP-level (handled by setSitewideJsonLd below) writes a different
+  // resource id pattern and is logged separately.
+  try {
+    const exists = await prisma.resource.findUnique({
+      where: { id: ownerId },
+      select: { id: true },
+    });
+    if (exists && prior !== next) {
+      await prisma.optimization.create({
+        data: {
+          resourceId: ownerId,
+          field: "jsonLd",
+          oldValue: prior,
+          newValue: next,
+          source: "rule",
+        },
+      });
+    }
+  } catch {
+    // Audit is best-effort — don't fail the write if the local row
+    // hasn't been scanned yet.
+  }
+}
+
+// Sitewide schemas live on the Shop owner, which has no local Resource
+// row, so we can't use the Optimization audit table (FK to Resource).
+// Snapshot the prior value into ImageBackup with a synthetic resourceId
+// — same convention used for theme assets and theme files — so the
+// restore-backups tool can find it.
+export async function setSitewideJsonLd(
+  shopId: string,
+  schemas: unknown[],
+): Promise<void> {
+  await ensureJsonMetafieldDefinition(
+    "SHOP",
+    "custom",
+    "json_ld_sitewide",
+    "JSON-LD Sitewide",
+  );
+  const prior = await readMetafieldValue(
+    shopId,
+    "custom",
+    "json_ld_sitewide",
+  );
+  const next = JSON.stringify(schemas);
+  if (prior !== null && prior !== next) {
+    // Lazy-import to avoid a circular dep with image-backup -> prisma
+    const { backupThemeFileText } = await import("./image-backup");
+    await backupThemeFileText({
+      themeId: "shop",
+      filename: `metafield/sitewide-json-ld-${Date.now()}.json`,
+      content: prior,
+      contentType: "application/json",
+    });
+  }
+  await setMetafield({
+    ownerId: shopId,
+    namespace: "custom",
+    key: "json_ld_sitewide",
+    type: "json",
+    value: next,
   });
 }
 
@@ -119,8 +254,30 @@ export async function setJsonLd(
 // chooses to exclude a blog/resource from this app's schema emission so a
 // different tool (e.g. the Proteck'd autoblog) can own its schema instead.
 // Safe to call on resources that never had the metafield — Shopify returns
-// a "not found" userError which we swallow.
+// a "not found" userError which we swallow. Snapshots the prior value to
+// the Optimization audit log first so a false-positive deletion can be
+// reversed by re-applying the prior schema.
 export async function clearJsonLd(ownerId: string): Promise<void> {
+  const prior = await readMetafieldValue(ownerId, "custom", "json_ld");
+  if (prior !== null) {
+    try {
+      const exists = await prisma.resource.findUnique({
+        where: { id: ownerId },
+        select: { id: true },
+      });
+      if (exists) {
+        await prisma.optimization.create({
+          data: {
+            resourceId: ownerId,
+            field: "jsonLd",
+            oldValue: prior,
+            newValue: null,
+            source: "rule",
+          },
+        });
+      }
+    } catch {}
+  }
   const data: {
     metafieldsDelete: {
       deletedMetafields: Array<{ key: string; namespace: string; ownerId: string }>;

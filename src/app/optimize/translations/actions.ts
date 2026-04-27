@@ -301,6 +301,32 @@ export async function translateOneResource(
           });
         }
         if (inputs.length === 0) return 0;
+        // Snapshot any prior translation values we're about to overwrite
+        // (outdated ones — the digest changed, but a prior translation
+        // existed). Shopify doesn't expose translation history, so this
+        // is the only undo path. Best-effort: skip if the local Resource
+        // row isn't there (FK constraint) but never fail the write.
+        try {
+          for (const inp of inputs) {
+            const ex = existing.find((t) => t.key === inp.key);
+            if (!ex || ex.value === inp.value) continue;
+            await prisma.optimization.create({
+              data: {
+                resourceId,
+                field: `translation:${target}:${inp.key}`,
+                oldValue: ex.value,
+                newValue: inp.value,
+                source: "ai",
+              },
+            });
+          }
+        } catch {
+          // Resource not yet scanned locally; audit row would fail FK.
+          // Log to console so the operator knows, but don't fail the write.
+          console.warn(
+            `[translateOneResource] could not write translation audit rows for ${resourceId}`,
+          );
+        }
         await registerTranslations(resourceId, inputs);
         return inputs.length;
       }),

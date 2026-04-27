@@ -15,6 +15,21 @@ const LIST_QUERY = /* GraphQL */ `
   }
 `;
 
+const READ_QUERY = /* GraphQL */ `
+  query RedirectById($id: ID!) {
+    urlRedirect(id: $id) { id path target }
+  }
+`;
+
+export async function readRedirect(
+  id: string,
+): Promise<ShopifyRedirect | null> {
+  const data = await shopifyGraphQL<{
+    urlRedirect: ShopifyRedirect | null;
+  }>(READ_QUERY, { id });
+  return data.urlRedirect;
+}
+
 const CREATE_MUTATION = /* GraphQL */ `
   mutation RedirectCreate($input: UrlRedirectInput!) {
     urlRedirectCreate(urlRedirect: $input) {

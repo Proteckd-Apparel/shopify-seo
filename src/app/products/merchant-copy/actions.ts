@@ -6,6 +6,7 @@ import { shopifyGraphQL } from "@/lib/shopify";
 import {
   ensureJsonMetafieldDefinition,
   setMetafield,
+  setMetafieldWithAudit,
 } from "@/lib/shopify-metafields";
 import {
   rewriteForGoogleShopping,
@@ -72,7 +73,7 @@ export async function saveMerchantCopy(
       description: copy.description,
       generatedAt: new Date().toISOString(),
     };
-    await setMetafield({
+    await setMetafieldWithAudit({
       ownerId: productId,
       namespace: MF_NAMESPACE,
       key: MF_KEY,

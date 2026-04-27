@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { shopifyGraphQL } from "@/lib/shopify";
-import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
+import {
+  ensureJsonMetafieldDefinition,
+  setMetafield,
+  setMetafieldWithAudit,
+} from "@/lib/shopify-metafields";
 import { getAnthropic, MODELS } from "@/lib/anthropic";
 import { loadOptimizerConfig } from "@/lib/optimizer-config";
 import { startJob, setProgress, finishJob } from "@/lib/bulk-job";
@@ -73,13 +77,15 @@ export async function saveFaqsForProduct(
   try {
     // 1) Persist the FAQ data on its own metafield so the editor can re-load
     //    next time and so the theme could read it directly if desired.
+    //    Use the audit wrapper so a wrong save is reversible from the
+    //    Optimization log.
     await ensureJsonMetafieldDefinition(
       "PRODUCT",
       "custom",
       "faqs",
       "Product FAQs",
     );
-    await setMetafield({
+    await setMetafieldWithAudit({
       ownerId: productId,
       namespace: "custom",
       key: "faqs",
