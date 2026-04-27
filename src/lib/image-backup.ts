@@ -59,6 +59,29 @@ export async function backupImageFromUrl(args: {
   });
 }
 
+// Snapshot a theme text file (Liquid, robots.txt, JSON-LD snippet, etc.)
+// into the same ImageBackup table the image flows use. We don't have a
+// dedicated themeFileBackup model, so the existing schema is overloaded:
+// resourceId encodes a synthetic key "theme-file:<themeId>:<filename>"
+// and bytes holds the UTF-8 encoded source. Pulled out as its own helper
+// so every theme-file write site uses the same convention.
+export async function backupThemeFileText(args: {
+  themeId: string;
+  filename: string;
+  content: string;
+  // Optional readable content type for the restore UI (e.g. "text/x-liquid").
+  contentType?: string;
+}): Promise<void> {
+  const buffer = Buffer.from(args.content, "utf-8");
+  await backupImage({
+    resourceId: `theme-file:${args.themeId}:${args.filename}`,
+    url: `theme-file://${args.themeId}/${args.filename}`,
+    filename: args.filename,
+    contentType: args.contentType ?? "text/plain",
+    bytes: buffer,
+  });
+}
+
 export async function getMostRecentBackup(resourceId: string) {
   return prisma.imageBackup.findFirst({
     where: { resourceId },

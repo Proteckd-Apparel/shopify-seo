@@ -19,6 +19,7 @@ import {
   resolvePrimaryCollection,
 } from "@/lib/primary-collection";
 import { ensureJsonMetafieldDefinition, setMetafield } from "@/lib/shopify-metafields";
+import { backupThemeFileText } from "@/lib/image-backup";
 import type { JsonLdConfig } from "@/lib/json-ld-config";
 import { clearJsonLd, setJsonLd } from "@/lib/shopify-metafields";
 import {
@@ -708,6 +709,19 @@ export async function disableThemeSchemas(): Promise<{
     for (const f of files) {
       const newContent = commentOutSchemas(f.content);
       if (newContent !== f.content) {
+        // Snapshot the prior file content before the comment-wrap rewrite.
+        // commentOutSchemas / restoreSchemas use a regex round-trip — if
+        // a Liquid edge case slips through the regex, the file is left
+        // with mismatched comment tags and that section/template returns
+        // a Liquid error storefront-side. Backup is the only escape.
+        await backupThemeFileText({
+          themeId: theme.id,
+          filename: f.filename,
+          content: f.content,
+          contentType: f.filename.endsWith(".liquid")
+            ? "text/x-liquid"
+            : "text/plain",
+        });
         await writeThemeFile(theme.id, f.filename, newContent);
         edited++;
       }
@@ -762,6 +776,18 @@ export async function enableThemeSchemas(): Promise<{
     for (const f of files) {
       const newContent = restoreSchemas(f.content);
       if (newContent !== f.content) {
+        // Snapshot before the regex-driven comment-strip — same protection
+        // as disableThemeSchemas. The backups stack: each disable+enable
+        // cycle creates two backup rows so any of the four states
+        // (pre-disable, disabled, pre-restore, restored) is recoverable.
+        await backupThemeFileText({
+          themeId: theme.id,
+          filename: f.filename,
+          content: f.content,
+          contentType: f.filename.endsWith(".liquid")
+            ? "text/x-liquid"
+            : "text/plain",
+        });
         await writeThemeFile(theme.id, f.filename, newContent);
         edited++;
       }

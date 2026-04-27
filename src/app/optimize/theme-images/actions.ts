@@ -10,6 +10,7 @@ import {
   type ThemeAsset,
 } from "@/lib/shopify-theme";
 import { compressImage } from "@/lib/image-compress";
+import { backupImage } from "@/lib/image-backup";
 
 export type ThemeImageRow = {
   filename: string;
@@ -123,6 +124,16 @@ export async function compressOneThemeImage(
         message: "Already optimal — no change",
       };
     }
+    // Snapshot original bytes BEFORE the in-place overwrite. Same
+    // synthetic resourceId convention as tools/assets-folder so the
+    // restore-backups tool can find both kinds of theme image backups.
+    await backupImage({
+      resourceId: `theme:${theme.id}:${filename}`,
+      url: `theme://${theme.id}/${filename}`,
+      filename,
+      contentType: asset.contentType,
+      bytes: asset.buffer,
+    });
     // Replace the asset bytes in place (same filename keeps Liquid references valid)
     await writeThemeBinaryAsset(theme.id, filename, result.buffer);
     revalidatePath("/optimize/theme-images");
@@ -174,6 +185,16 @@ export async function compressAllThemeImages(
           totalAfter += asset.buffer.length;
           continue;
         }
+        // Snapshot before in-place overwrite — see compressOneThemeImage
+        // for the rationale. Backup is a hard prerequisite per the
+        // shopify-seo destructive-image invariant.
+        await backupImage({
+          resourceId: `theme:${theme.id}:${img.filename}`,
+          url: `theme://${theme.id}/${img.filename}`,
+          filename: img.filename,
+          contentType: asset.contentType,
+          bytes: asset.buffer,
+        });
         await writeThemeBinaryAsset(theme.id, img.filename, result.buffer);
         totalAfter += result.bytes;
         saved++;

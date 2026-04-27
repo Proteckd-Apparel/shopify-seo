@@ -468,12 +468,16 @@ export async function updateResourceBodyHtml(
     throw new Error(`Unsupported resource type: ${type}`);
   }
 
+  // Store the full body HTML on both sides — earlier code truncated to 5000
+  // chars to keep audit rows small, but that quietly broke revertLastBulkRun
+  // for any article/product description longer than 5KB (revert pulled back
+  // a truncated body). Postgres TEXT has no practical limit; pay the row size.
   await prisma.optimization.create({
     data: {
       resourceId,
       field: "bodyHtml",
-      oldValue: existing.bodyHtml?.slice(0, 5000) ?? null,
-      newValue: newHtml.slice(0, 5000),
+      oldValue: existing.bodyHtml ?? null,
+      newValue: newHtml,
       source,
       model,
     },

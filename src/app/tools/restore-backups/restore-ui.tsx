@@ -26,6 +26,7 @@ const TYPE_OPTIONS: Array<{
   { label: "Articles", value: "article" },
   { label: "Collections", value: "collection" },
   { label: "Theme assets", value: "theme" },
+  { label: "Theme files", value: "theme-file" },
 ];
 
 function fmtBytes(n: number): string {

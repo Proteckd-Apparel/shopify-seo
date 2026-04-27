@@ -15,7 +15,7 @@
 import { prisma } from "./prisma";
 import { shopifyGraphQL } from "./shopify";
 import { stageBytes } from "./shopify-file-swap";
-import { writeThemeBinaryAsset } from "./shopify-theme";
+import { writeThemeBinaryAsset, writeThemeFile } from "./shopify-theme";
 
 export type RestoreResult = {
   ok: boolean;
@@ -37,12 +37,24 @@ export type BackupRow = {
   // raw GID. Resolved by joining ImageBackup -> Resource for matching
   // GIDs, otherwise null.
   resourceTitle: string | null;
-  resourceType: "product" | "article" | "collection" | "theme" | "unknown";
+  resourceType:
+    | "product"
+    | "article"
+    | "collection"
+    | "theme"
+    | "theme-file"
+    | "unknown";
 };
 
 function classifyResourceId(
   resourceId: string,
-): "product" | "article" | "collection" | "theme" | "unknown" {
+):
+  | "product"
+  | "article"
+  | "collection"
+  | "theme"
+  | "theme-file"
+  | "unknown" {
   if (resourceId.startsWith("gid://shopify/Product/")) return "product";
   if (
     resourceId.startsWith("gid://shopify/Article/") ||
@@ -50,6 +62,7 @@ function classifyResourceId(
   )
     return "article";
   if (resourceId.startsWith("gid://shopify/Collection/")) return "collection";
+  if (resourceId.startsWith("theme-file:")) return "theme-file";
   if (resourceId.startsWith("theme:")) return "theme";
   return "unknown";
 }
@@ -69,9 +82,28 @@ function parseThemeResourceId(
   };
 }
 
+function parseThemeFileResourceId(
+  resourceId: string,
+): { themeId: string; filename: string } | null {
+  if (!resourceId.startsWith("theme-file:")) return null;
+  const rest = resourceId.slice(11);
+  const lastColon = rest.lastIndexOf(":");
+  if (lastColon < 0) return null;
+  return {
+    themeId: rest.slice(0, lastColon),
+    filename: rest.slice(lastColon + 1),
+  };
+}
+
 export type ListBackupsOptions = {
   sinceHours?: number; // default: all
-  resourceType?: "product" | "article" | "collection" | "theme" | "all";
+  resourceType?:
+    | "product"
+    | "article"
+    | "collection"
+    | "theme"
+    | "theme-file"
+    | "all";
   limit?: number;
 };
 
@@ -348,6 +380,23 @@ async function restoreTheme(
   };
 }
 
+async function restoreThemeFile(
+  resourceId: string,
+  bytes: Buffer,
+): Promise<RestoreResult> {
+  const parsed = parseThemeFileResourceId(resourceId);
+  if (!parsed) throw new Error(`Bad theme-file resourceId: ${resourceId}`);
+  // Theme files are text (Liquid, JSON, robots.txt template, etc.)
+  // stored as UTF-8 in the bytes column. writeThemeFile takes the string
+  // directly.
+  const content = bytes.toString("utf-8");
+  await writeThemeFile(parsed.themeId, parsed.filename, content);
+  return {
+    ok: true,
+    message: `Restored theme file ${parsed.filename}`,
+  };
+}
+
 // ---------- Public entry points ----------
 
 export async function restoreOneBackup(
@@ -361,6 +410,9 @@ export async function restoreOneBackup(
   try {
     if (kind === "theme") {
       return await restoreTheme(b.resourceId, bytes);
+    }
+    if (kind === "theme-file") {
+      return await restoreThemeFile(b.resourceId, bytes);
     }
 
     // All Shopify-resource paths start with stageBytes -> resourceUrl

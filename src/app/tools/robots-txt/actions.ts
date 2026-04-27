@@ -13,6 +13,7 @@ import {
   readThemeFiles,
   writeThemeFile,
 } from "@/lib/shopify-theme";
+import { backupThemeFileText } from "@/lib/image-backup";
 
 export type RuleType = "disallow" | "allow" | "sitemap" | "crawl-delay";
 
@@ -235,6 +236,29 @@ export async function applyToTheme(): Promise<{
       };
     }
     const liquid = buildLiquid(rules, s?.robotsBoostImages ?? false, domain);
+
+    // Snapshot whatever's currently at templates/robots.txt.liquid before
+    // overwriting. A bad Liquid string here = /robots.txt returns 500 on
+    // every storefront request and Google sees nothing — restore from the
+    // backup row if that happens.
+    try {
+      const existing = await readThemeFiles(theme.id, [TEMPLATE_PATH]);
+      const prior = existing[0]?.content;
+      if (prior !== undefined && prior !== null) {
+        await backupThemeFileText({
+          themeId: theme.id,
+          filename: TEMPLATE_PATH,
+          content: prior,
+          contentType: "text/x-liquid",
+        });
+      }
+    } catch {
+      // Read/backup failure shouldn't block the write — the file may not
+      // exist yet on a fresh theme. We log to console and continue rather
+      // than blocking on a read of a file that legitimately isn't there.
+      console.warn("[robots-txt] could not snapshot prior robots.txt.liquid");
+    }
+
     await writeThemeFile(theme.id, TEMPLATE_PATH, liquid);
     revalidatePath("/tools/robots-txt");
     return { ok: true, message: "robots.txt.liquid written to theme" };
@@ -289,6 +313,25 @@ export async function restoreDefault(): Promise<{
 {% endfor %}
 Sitemap: https://${domain}/sitemap.xml
 `;
+    // Snapshot prior content before overwriting — same protection as
+    // applyToTheme. The default restore shouldn't quietly destroy a
+    // user's hand-tuned rules with no recovery row.
+    try {
+      const existing = await readThemeFiles(theme.id, [TEMPLATE_PATH]);
+      const prior = existing[0]?.content;
+      if (prior !== undefined && prior !== null) {
+        await backupThemeFileText({
+          themeId: theme.id,
+          filename: TEMPLATE_PATH,
+          content: prior,
+          contentType: "text/x-liquid",
+        });
+      }
+    } catch {
+      console.warn(
+        "[robots-txt] could not snapshot prior robots.txt.liquid before restore",
+      );
+    }
     await writeThemeFile(theme.id, TEMPLATE_PATH, liquid);
     await prisma.settings.upsert({
       where: { id: 1 },

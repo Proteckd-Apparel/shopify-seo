@@ -18,6 +18,14 @@ export async function saveTags(
   tags: string[],
 ): Promise<{ ok: boolean; message: string }> {
   try {
+    // Snapshot the existing tags before the destructive overwrite, otherwise
+    // a wrong save with no oldValue means the previous tag list is gone.
+    const existing = await prisma.resource.findUnique({
+      where: { id: productId },
+      select: { tags: true },
+    });
+    const oldTags = existing?.tags ?? null;
+
     const data = await shopifyGraphQL<{
       productUpdate: {
         product: { id: string; tags: string[] };
@@ -38,7 +46,7 @@ export async function saveTags(
       data: {
         resourceId: productId,
         field: "tags",
-        oldValue: null,
+        oldValue: oldTags,
         newValue: tags.join(","),
         source: "manual",
       },
