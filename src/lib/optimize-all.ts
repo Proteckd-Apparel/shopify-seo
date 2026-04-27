@@ -71,7 +71,10 @@ export async function runOptimizeAll(
     }
 
     const where: Record<string, unknown> = { type: SINGULAR[rk] };
-    if (rc.scope === "published") where.status = { not: "draft" };
+    // Shopify product status is active|draft|archived. "Published" must
+    // mean "active" (not "not draft", which leaks archived products that
+    // the user explicitly removed).
+    if (rc.scope === "published") where.status = "active";
     else if (rc.scope === "drafts") where.status = "draft";
 
     const skipped = await prisma.skipPage.findMany({
@@ -265,6 +268,13 @@ export async function runOptimizeAll(
           const result = await applyCleanupToOne(rk, r.id);
           if (result.ok && result.message !== "No changes to apply") {
             saved++;
+          } else if (!result.ok) {
+            // Returned-as-failure (no exception): count it so the
+            // processed/saved/failed totals reconcile.
+            failed++;
+            pushLog(
+              `HTML cleanup fail ${r.handle ?? r.id}: ${result.message}`,
+            );
           }
         } catch (e) {
           failed++;
@@ -295,6 +305,11 @@ export async function runOptimizeAll(
           );
           if (result.ok && result.message !== "No change needed") {
             saved++;
+          } else if (!result.ok) {
+            failed++;
+            pushLog(
+              `Title cleanup fail ${r.handle ?? r.id}: ${result.message}`,
+            );
           }
         } catch (e) {
           failed++;
@@ -318,6 +333,11 @@ export async function runOptimizeAll(
           const result = await translateOneResource(r.id);
           if (result.ok && (result.fields ?? 0) > 0) {
             saved++;
+          } else if (!result.ok) {
+            failed++;
+            pushLog(
+              `Translate fail ${r.handle ?? r.id}: ${result.message}`,
+            );
           }
         } catch (e) {
           failed++;

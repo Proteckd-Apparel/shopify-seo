@@ -28,6 +28,7 @@ type RawVariant = {
 type RawProduct = {
   variants?: RawVariant[];
   options?: Array<{ name: string; values: string[] }>;
+  totalInventory?: number | null;
   priceRangeV2?: {
     minVariantPrice?: { amount: string; currencyCode: string };
     maxVariantPrice?: { amount: string; currencyCode: string };
@@ -173,7 +174,10 @@ function generateProductSchemaInternal(
         const offer: Record<string, unknown> = {
           "@type": "Offer",
           url: `${url}?variant=${v.id.replace("gid://shopify/ProductVariant/", "")}`,
-          sku: v.sku ?? v.id,
+          // Omit SKU entirely when the variant has none — emitting the
+          // GID as a SKU pollutes Merchant Center and confuses
+          // downstream tooling. Schema.org allows the field to be absent.
+          ...(v.sku ? { sku: v.sku } : {}),
           priceCurrency: currency,
           price,
           priceValidUntil: priceValidUntil(),
@@ -205,9 +209,16 @@ function generateProductSchemaInternal(
           priceValidUntil: priceValidUntil(),
           itemCondition,
           seller,
-          availability: cfg.alwaysShowInStock
-            ? "https://schema.org/InStock"
-            : "https://schema.org/InStock",
+          // Without per-variant data we can't tell true stock state from
+          // a Shopify product summary, so fall back to the catalog-level
+          // signal: totalInventory > 0 OR tracksInventory false.
+          availability:
+            cfg.alwaysShowInStock ||
+            raw.totalInventory === undefined ||
+            raw.totalInventory === null ||
+            raw.totalInventory > 0
+              ? "https://schema.org/InStock"
+              : "https://schema.org/OutOfStock",
           areaServed: countryName(cfg.shippingRegion),
           shippingDetails: { "@id": SHIPPING_DETAILS_ID },
           hasMerchantReturnPolicy: { "@id": RETURN_POLICY_ID },
@@ -223,7 +234,10 @@ function generateProductSchemaInternal(
     "@context": "https://schema.org/",
     "@type": "Product",
     productID: productId,
-    sku: variants[0]?.sku ?? productId,
+    // Omit SKU when the first variant has no SKU (rather than falling
+    // back to the product GID). Schema.org allows it to be absent;
+    // emitting the GID as a SKU misleads downstream consumers.
+    ...(variants[0]?.sku ? { sku: variants[0].sku } : {}),
     mainEntityOfPage: url,
     url,
     name: resource.title ?? "",
@@ -531,8 +545,26 @@ export function generateArticleSchema(
         url: `https://${shop.domain}/cdn/shop/files/logo.png`,
       },
     },
-    datePublished: resource.fetchedAt.toISOString(),
-    dateModified: resource.updatedAt.toISOString(),
+    // Prefer Shopify's actual publishedAt / updatedAt from the raw JSON
+    // captured by the scanner. fetchedAt / updatedAt are local-DB
+    // timestamps (when WE first scanned the article + when we last
+    // touched the local row) and have no relationship to the article's
+    // real publish or edit dates — using them was Google-flaggable as
+    // freshness manipulation.
+    datePublished: (() => {
+      try {
+        const raw = resource.raw ? JSON.parse(resource.raw) : null;
+        if (raw?.publishedAt) return new Date(raw.publishedAt).toISOString();
+      } catch {}
+      return resource.fetchedAt.toISOString();
+    })(),
+    dateModified: (() => {
+      try {
+        const raw = resource.raw ? JSON.parse(resource.raw) : null;
+        if (raw?.updatedAt) return new Date(raw.updatedAt).toISOString();
+      } catch {}
+      return resource.updatedAt.toISOString();
+    })(),
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     url,
   });

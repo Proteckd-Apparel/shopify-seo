@@ -320,7 +320,7 @@ export async function bulkRenameImages(
   return {
     ok: failed === 0,
     message: `Processed ${processed} (saved ${saved}, failed ${failed}, skipped ${skippedCount})${
-      saved >= cap ? " — hit ${cap} cap, run again for more" : ""
+      saved >= cap ? ` — hit ${cap} cap, run again for more` : ""
     }`,
     processed,
     saved,

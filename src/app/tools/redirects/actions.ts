@@ -43,13 +43,18 @@ export async function deleteRedirectAction(
     }
 
     if (!force) {
-      // Match on the path against our 404 log. Same-path + last 30 days +
-      // not-yet-resolved is a strong signal that real traffic is hitting
-      // the redirect.
+      // Match exact path or path-with-query — substring match on
+      // `existing.path` would flag /older as traffic for /old. We accept
+      // both `/old` and `/old?...` so query-string variations still
+      // count, but reject prefix matches like /older.
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const trafficCount = await prisma.notFound.count({
         where: {
-          url: { contains: existing.path },
+          OR: [
+            { url: existing.path },
+            { url: { startsWith: `${existing.path}?` } },
+            { url: { startsWith: `${existing.path}#` } },
+          ],
           lastSeen: { gte: since },
           resolved: false,
         },

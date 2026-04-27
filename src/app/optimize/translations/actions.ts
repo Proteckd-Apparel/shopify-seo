@@ -389,8 +389,12 @@ async function translateBulkInner(
     processed++;
     try {
       const result = await translateOneResource(r.id);
-      if (result.ok) saved++;
-      else {
+      // translateOneResource returns ok:true with fields:0 when every
+      // field is already translated and not outdated. Counting that as
+      // "saved" misled the user — bulk runs on a fully-translated catalog
+      // reported "saved 200" while writing nothing. Only count writes.
+      if (result.ok && (result.fields ?? 0) > 0) saved++;
+      else if (!result.ok) {
         failed++;
         if (!firstError && result.message) firstError = result.message;
       }

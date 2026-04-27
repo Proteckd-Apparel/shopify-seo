@@ -97,12 +97,19 @@ export async function updateResourceSeo(
     });
     throwOnUserErrors(data.collectionUpdate.userErrors);
   } else if (type === "page") {
-    // Page SEO is on the page itself; Shopify exposes title only at the top level.
+    // Page + article SEO go on the title field directly (no separate seo
+    // sub-object on these types). Only send `title` when the user is
+    // actually changing the seoTitle — otherwise a seoDescription-only
+    // call would silently overwrite the page H1 with the previously-saved
+    // seoTitle (which Shopify renders as the page heading).
     const data = await shopifyGraphQL<{
       pageUpdate: MutationResult<{ page: { id: string } }>;
     }>(PAGE_UPDATE, {
       id: resourceId,
-      page: { title: newTitle || undefined },
+      page:
+        patch.seoTitle !== undefined && patch.seoTitle !== existing.seoTitle
+          ? { title: newTitle || undefined }
+          : {},
     });
     throwOnUserErrors(data.pageUpdate.userErrors);
   } else if (type === "article") {
@@ -110,7 +117,10 @@ export async function updateResourceSeo(
       articleUpdate: MutationResult<{ article: { id: string } }>;
     }>(ARTICLE_UPDATE, {
       id: resourceId,
-      article: { title: newTitle || undefined },
+      article:
+        patch.seoTitle !== undefined && patch.seoTitle !== existing.seoTitle
+          ? { title: newTitle || undefined }
+          : {},
     });
     throwOnUserErrors(data.articleUpdate.userErrors);
   } else {

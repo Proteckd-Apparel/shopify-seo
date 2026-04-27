@@ -238,6 +238,8 @@ const ARTICLES_QUERY = /* GraphQL */ `
         title
         body
         isPublished
+        publishedAt
+        updatedAt
         blog { id title handle }
         image { id url altText width height }
       }

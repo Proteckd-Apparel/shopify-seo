@@ -37,6 +37,9 @@ export function computeBrandKeywords(s: {
 }
 
 // Returns the first keyword that appears in the response text, or null.
+// Word-boundary match — naive substring containment matched things like
+// "snapple" for "Apple" or "demand" for "EMF", flooding the dashboards
+// with false-positive brand mentions.
 export function detectMention(
   response: string,
   keywords: string[],
@@ -44,7 +47,12 @@ export function detectMention(
   const hay = response.toLowerCase();
   for (const k of keywords) {
     if (!k) continue;
-    if (hay.includes(k.toLowerCase())) return k;
+    const needle = k.toLowerCase().trim();
+    if (!needle) continue;
+    // Escape regex specials so a keyword like "C++" still works.
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i");
+    if (re.test(hay)) return k;
   }
   return null;
 }

@@ -92,26 +92,35 @@ function resolveUrl(href: string, shopDomain: string): string | null {
   }
 }
 
-async function checkUrl(url: string): Promise<number> {
-  try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: AbortSignal.timeout(8000),
-    });
-    // Some servers (esp. Cloudflare) return 403/405 to HEAD but 200 to GET.
-    if (res.status === 403 || res.status === 405) {
-      const r2 = await fetch(url, {
-        method: "GET",
+// Returns the HTTP status, or null if we couldn't reach the host at all
+// (timeout, DNS, TLS). The caller distinguishes those from "true" 4xx/5xx
+// responses — recording an unreachable URL as `status:0 broken` and
+// recommending deletion / redirect creates real customer harm when the
+// host was just slow.
+async function checkUrl(url: string): Promise<number | null> {
+  // Two HEAD attempts so a single transient timeout doesn't flag a real
+  // URL as broken. If both throw, treat as unreachable (return null).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "HEAD",
         redirect: "follow",
         signal: AbortSignal.timeout(8000),
       });
-      return r2.status;
+      if (res.status === 403 || res.status === 405) {
+        const r2 = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          signal: AbortSignal.timeout(8000),
+        });
+        return r2.status;
+      }
+      return res.status;
+    } catch {
+      if (attempt === 1) return null;
     }
-    return res.status;
-  } catch {
-    return 0; // network error / timeout
   }
+  return null;
 }
 
 // Run an array of async tasks with limited concurrency.
@@ -222,6 +231,9 @@ export async function scanBroken(
     const brokenStatuses: number[] = [];
     for (let idx = 0; idx < dedup.length; idx++) {
       const status = statuses[idx];
+      // null = unreachable (timeout/DNS/TLS) — skip rather than record
+      // as broken. The host might be temporarily down.
+      if (status === null) continue;
       const ok = status >= 200 && status < 400;
       if (!ok) {
         broken.push(dedup[idx]);

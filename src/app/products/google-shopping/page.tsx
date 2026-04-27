@@ -8,8 +8,12 @@ export default async function GoogleShoppingPage() {
   const total = await prisma.resource.count({ where: { type: "product" } });
   const settings = await prisma.settings.findUnique({ where: { id: 1 } });
 
-  // Build the URL of our generated feed
-  const feedUrl = "/feeds/google-shopping.xml";
+  // Use the primary-feed route — it pulls live from Shopify GraphQL and
+  // emits every Google-required attribute (price, availability, brand,
+  // mpn, etc). The legacy /feeds/google-shopping.xml route emits a
+  // partial feed without <g:price>, which Merchant Center rejects on
+  // every item.
+  const feedUrl = "/feeds/google-shopping-primary.xml";
 
   return (
     <div>
