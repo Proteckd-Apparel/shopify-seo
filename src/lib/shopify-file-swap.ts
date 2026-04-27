@@ -14,6 +14,7 @@
 // whole batch or just skip this image.
 
 import { shopifyGraphQL } from "./shopify";
+import { backupImage, backupImageFromUrl } from "./image-backup";
 
 export type StagedUpload = {
   url: string;
@@ -353,6 +354,15 @@ export async function replaceProductImageFromUrl(args: {
   if (!existing)
     throw new Error("Could not find product media for image URL");
 
+  // Backup the ORIGINAL product image bytes before any destructive step.
+  // Hard prerequisite: if backup fails, abort — Shopify will destroy the
+  // old CDN object during productDeleteMedia and the bytes won't be
+  // recoverable any other way.
+  await backupImageFromUrl({
+    resourceId: args.productId,
+    url: args.oldImageUrl,
+  });
+
   // Download the new image so we can re-stage with our preferred filename
   const res = await fetch(args.newImageUrl);
   if (!res.ok)
@@ -401,6 +411,19 @@ export async function renameProductImage(args: {
 
   // 2. Download the original bytes
   const { buffer, contentType } = await downloadImage(oldImageUrl);
+
+  // Backup the ORIGINAL bytes before any destructive step. Hard
+  // prerequisite: if backup fails, abort — productDeleteMedia at the
+  // end of this function destroys the old CDN object, so without a
+  // backup row the bytes would be unrecoverable.
+  const oldBase = oldImageUrl.split("?")[0].split("/").pop() ?? "image";
+  await backupImage({
+    resourceId: productId,
+    url: oldImageUrl,
+    filename: oldBase,
+    contentType,
+    bytes: buffer,
+  });
 
   // 3. Build the full filename (preserve original extension)
   const ext = oldImageUrl.split("?")[0].split(".").pop() ?? "jpg";

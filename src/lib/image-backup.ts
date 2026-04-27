@@ -33,6 +33,32 @@ export async function backupImage(args: {
   });
 }
 
+// Fetch original bytes from a CDN URL and write an ImageBackup row. Used
+// by every destructive image-replace path so the original bytes are
+// recoverable even after Shopify drops the old CDN object. Throws on
+// fetch / DB failure — callers should treat this as a hard prerequisite
+// for any destructive op so we never silently lose data.
+export async function backupImageFromUrl(args: {
+  resourceId: string;
+  url: string;
+}): Promise<void> {
+  const clean = args.url.split("?")[0];
+  const res = await fetch(clean);
+  if (!res.ok) {
+    throw new Error(`backupImageFromUrl: fetch ${res.status} for ${clean}`);
+  }
+  const contentType = res.headers.get("content-type") ?? "image/jpeg";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const filename = clean.split("/").pop() ?? "image";
+  await backupImage({
+    resourceId: args.resourceId,
+    url: args.url,
+    filename,
+    contentType,
+    bytes: buffer,
+  });
+}
+
 export async function getMostRecentBackup(resourceId: string) {
   return prisma.imageBackup.findFirst({
     where: { resourceId },

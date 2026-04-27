@@ -9,6 +9,7 @@ import {
   readThemeAssetBytes,
   writeThemeBinaryAsset,
 } from "@/lib/shopify-theme";
+import { backupImage } from "@/lib/image-backup";
 
 export type AssetRow = {
   filename: string;
@@ -122,6 +123,18 @@ export async function compressOneAsset(
         after: out.length,
       };
     }
+
+    // Backup the ORIGINAL theme asset bytes before overwriting in place.
+    // Theme assets share a path/URL across versions, so writeThemeBinaryAsset
+    // is destructive — once it returns, the original bytes are gone.
+    // Stored under a synthetic resourceId so restore tooling can find it.
+    await backupImage({
+      resourceId: `theme:${theme.id}:${filename}`,
+      url: `theme://${theme.id}/${filename}`,
+      filename,
+      contentType: data.contentType,
+      bytes: data.buffer,
+    });
 
     await writeThemeBinaryAsset(theme.id, filename, out);
     return {

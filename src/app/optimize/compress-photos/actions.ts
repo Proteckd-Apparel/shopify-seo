@@ -186,6 +186,9 @@ export async function compressOne(
         altText: visionAlt ?? img.altText,
       });
     } else if (rtype === "article") {
+      // Backup row was already written above (line ~124) for products,
+      // but the article + collection branches share the same backupImage
+      // call up there so this branch is already protected. Proceed.
       const { replaceArticleImageBytes } = await import("@/lib/shopify-mutate");
       const replaced = await replaceArticleImageBytes({
         articleId: img.resource.id,
@@ -199,7 +202,7 @@ export async function compressOne(
       newWidth = replaced.width ?? newWidth;
       newHeight = replaced.height ?? newHeight;
     } else {
-      // collection
+      // collection — backup already written above for all rtypes
       const { replaceCollectionImageBytes } = await import("@/lib/shopify-mutate");
       const replaced = await replaceCollectionImageBytes({
         collectionId: img.resource.id,
