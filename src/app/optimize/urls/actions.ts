@@ -211,12 +211,29 @@ export type BulkResult = {
   saved: number;
   failed: number;
   skipped: number;
+  // When dryRun=true the server returns the would-be changes here instead
+  // of writing to Shopify. Each entry is one resource that would be
+  // updated; reasons array surfaces why a resource was filtered out.
+  preview?: Array<{
+    resourceId: string;
+    title: string | null;
+    handle: string | null;
+    newHandle: string;
+    newUrl: string;
+  }>;
+  skippedDetail?: Array<{
+    resourceId: string;
+    title: string | null;
+    handle: string | null;
+    reason: string;
+  }>;
 };
 
 export async function bulkApplyUrls(
   scope: TemplateScopeKey,
   template: TemplateConfig,
   cfg: UrlOptimizerConfig,
+  dryRun = false,
 ): Promise<BulkResult> {
   if (!cfg.enabled)
     return {
@@ -267,13 +284,22 @@ export async function bulkApplyUrls(
   let saved = 0;
   let failed = 0;
   let skipped = 0;
+  const preview: NonNullable<BulkResult["preview"]> = [];
+  const skippedDetail: NonNullable<BulkResult["skippedDetail"]> = [];
+  const baseUrl = `https://${settings?.shopDomain ?? "your-shop.com"}`;
 
   for (const r of items) {
     processed++;
     try {
       if (recentlyChanged.has(r.id)) {
-        // Handle changed within the last 30 days — refuse to chain.
         skipped++;
+        if (dryRun)
+          skippedDetail.push({
+            resourceId: r.id,
+            title: r.title,
+            handle: r.handle,
+            reason: "handle changed within last 30 days",
+          });
         continue;
       }
       const rendered =
@@ -286,20 +312,50 @@ export async function bulkApplyUrls(
       const newSlug = buildSlug(rendered, cfg);
       if (!newSlug) {
         skipped++;
+        if (dryRun)
+          skippedDetail.push({
+            resourceId: r.id,
+            title: r.title,
+            handle: r.handle,
+            reason: "template rendered empty",
+          });
         continue;
       }
       if (newSlug === r.handle) {
         skipped++;
+        if (dryRun)
+          skippedDetail.push({
+            resourceId: r.id,
+            title: r.title,
+            handle: r.handle,
+            reason: "no change",
+          });
         continue;
       }
-      // Honor "Overwrite Existing" — if OFF, only rewrite handles that are
-      // longer than the cap (i.e. need cleanup) instead of every handle.
       if (
         !cfg.overwriteExisting &&
         r.handle &&
         r.handle.length <= cfg.maxChars
       ) {
         skipped++;
+        if (dryRun)
+          skippedDetail.push({
+            resourceId: r.id,
+            title: r.title,
+            handle: r.handle,
+            reason: `handle already <= ${cfg.maxChars} chars`,
+          });
+        continue;
+      }
+      if (dryRun) {
+        preview.push({
+          resourceId: r.id,
+          title: r.title,
+          handle: r.handle,
+          newHandle: newSlug,
+          newUrl: `${baseUrl}${resourcePath(r.type, newSlug)}`,
+        });
+        saved++;
         continue;
       }
       await updateResourceHandle(r.id, r.type, newSlug, "rule");
@@ -309,16 +365,19 @@ export async function bulkApplyUrls(
     }
   }
 
-  revalidatePath("/optimize/urls");
+  if (!dryRun) revalidatePath("/optimize/urls");
   return {
     ok: failed === 0,
-    message: `Processed ${processed} (saved ${saved}, skipped ${skipped}, failed ${failed})${
-      processed === 200 ? " — hit 200 cap, run again for more" : ""
-    }. Shopify auto-created 301 redirects.`,
+    message: dryRun
+      ? `Preview: ${saved} would update, ${skipped} would skip, ${failed} would fail (out of ${processed}).`
+      : `Processed ${processed} (saved ${saved}, skipped ${skipped}, failed ${failed})${
+          processed === 200 ? " — hit 200 cap, run again for more" : ""
+        }. Shopify auto-created 301 redirects.`,
     processed,
     saved,
     failed,
     skipped,
+    ...(dryRun ? { preview, skippedDetail } : {}),
   };
 }
 

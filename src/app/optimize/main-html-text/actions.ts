@@ -147,6 +147,13 @@ export type ApplyResult = {
   processed?: number;
   saved?: number;
   failed?: number;
+  preview?: Array<{
+    resourceId: string;
+    title: string | null;
+    handle: string | null;
+    changeCount: number;
+    changeSummary: string[];
+  }>;
 };
 
 export async function applyCleanupToOne(
@@ -203,7 +210,10 @@ export async function applyCleanupToOne(
   }
 }
 
-export async function applyCleanupToAll(scope: Scope): Promise<ApplyResult> {
+export async function applyCleanupToAll(
+  scope: Scope,
+  dryRun = false,
+): Promise<ApplyResult> {
   try {
     const cfg = await loadOptimizerConfig();
     const settings = await prisma.settings.findUnique({ where: { id: 1 } });
@@ -234,6 +244,7 @@ export async function applyCleanupToAll(scope: Scope): Promise<ApplyResult> {
 
     let saved = 0;
     let failed = 0;
+    const preview: NonNullable<ApplyResult["preview"]> = [];
     for (const r of items) {
       try {
         let result = cleanupHtml(
@@ -242,7 +253,9 @@ export async function applyCleanupToAll(scope: Scope): Promise<ApplyResult> {
           shopHost,
           r.title ?? "",
         );
-        if (tcfg.aiRewrite) {
+        if (tcfg.aiRewrite && !dryRun) {
+          // AI rewrite stays disabled in dry-run (expensive +
+          // non-deterministic). Preview shows only the rule-based diff.
           const rewritten = await aiRewrite(
             r.title ?? "",
             result.html,
@@ -251,6 +264,43 @@ export async function applyCleanupToAll(scope: Scope): Promise<ApplyResult> {
           result = { html: rewritten, changes: result.changes };
         }
         if (result.html === r.bodyHtml) continue;
+        if (dryRun) {
+          // Summarize the structured `changes` counter object into a
+          // short list of human-readable strings (one per non-zero
+          // counter) so the preview UI can show why each resource is
+          // being touched.
+          const changeSummary: string[] = [];
+          if (result.changes.altsAdded)
+            changeSummary.push(`${result.changes.altsAdded} alt added`);
+          if (result.changes.lazyloadAdded)
+            changeSummary.push(`${result.changes.lazyloadAdded} lazyload`);
+          if (result.changes.linkTitlesAdded)
+            changeSummary.push(
+              `${result.changes.linkTitlesAdded} link title`,
+            );
+          if (result.changes.linkAriaLabelsAdded)
+            changeSummary.push(
+              `${result.changes.linkAriaLabelsAdded} aria-label`,
+            );
+          if (result.changes.externalLinksStripped)
+            changeSummary.push(
+              `${result.changes.externalLinksStripped} external link removed`,
+            );
+          if (result.changes.emptyParagraphsRemoved)
+            changeSummary.push(
+              `${result.changes.emptyParagraphsRemoved} empty <p> removed`,
+            );
+          const total = changeSummary.length === 0 ? 1 : changeSummary.length;
+          preview.push({
+            resourceId: r.id,
+            title: r.title,
+            handle: r.handle,
+            changeCount: total,
+            changeSummary: changeSummary.slice(0, 5),
+          });
+          saved++;
+          continue;
+        }
         await updateResourceBodyHtml(
           r.id,
           r.type,
@@ -264,17 +314,20 @@ export async function applyCleanupToAll(scope: Scope): Promise<ApplyResult> {
       }
     }
 
-    revalidatePath("/optimize/main-html-text");
+    if (!dryRun) revalidatePath("/optimize/main-html-text");
     return {
       ok: failed === 0,
-      message: `Processed ${items.length} (saved ${saved}, failed ${failed})${
-        tcfg.aiRewrite && items.length === 100
-          ? " — AI cap reached, run again for more"
-          : ""
-      }`,
+      message: dryRun
+        ? `Preview: ${saved} would update, ${failed} would fail (out of ${items.length}).${tcfg.aiRewrite ? " AI rewrite skipped — preview shows rule-based diff only." : ""}`
+        : `Processed ${items.length} (saved ${saved}, failed ${failed})${
+            tcfg.aiRewrite && items.length === 100
+              ? " — AI cap reached, run again for more"
+              : ""
+          }`,
       processed: items.length,
       saved,
       failed,
+      ...(dryRun ? { preview } : {}),
     };
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Failed" };

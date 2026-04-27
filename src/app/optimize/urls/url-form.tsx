@@ -115,6 +115,15 @@ export function UrlForm({
     });
   }
 
+  function dryRunAll() {
+    setBulk(null);
+    setMsg(null);
+    start(async () => {
+      const r = await bulkApplyUrls(scope, tpl, cfg, true);
+      setBulk(r);
+    });
+  }
+
   function restore() {
     if (
       !confirm(
@@ -346,6 +355,14 @@ export function UrlForm({
         )}
         <button
           type="button"
+          onClick={dryRunAll}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+        >
+          Preview all
+        </button>
+        <button
+          type="button"
           onClick={applyAll}
           disabled={pending}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
@@ -364,13 +381,46 @@ export function UrlForm({
           <span className="basis-full text-xs text-slate-600 mt-1">{msg}</span>
         )}
         {bulk && (
-          <span
+          <div
             className={`basis-full text-xs mt-1 ${
               bulk.ok ? "text-emerald-700" : "text-amber-700"
             }`}
           >
-            {bulk.message}
-          </span>
+            <div>{bulk.message}</div>
+            {bulk.preview && bulk.preview.length > 0 && (
+              <div className="mt-2 border border-slate-200 rounded bg-white max-h-96 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-600">
+                    <tr>
+                      <th className="text-left px-3 py-1.5">Title</th>
+                      <th className="text-left px-3 py-1.5">Current handle</th>
+                      <th className="text-left px-3 py-1.5">→ New handle</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulk.preview.slice(0, 100).map((p) => (
+                      <tr key={p.resourceId} className="border-t border-slate-100">
+                        <td className="px-3 py-1 text-slate-700 truncate max-w-xs">
+                          {p.title || p.handle || p.resourceId}
+                        </td>
+                        <td className="px-3 py-1 font-mono text-slate-500">
+                          {p.handle ?? "—"}
+                        </td>
+                        <td className="px-3 py-1 font-mono text-emerald-700">
+                          {p.newHandle}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {bulk.preview.length > 100 && (
+                  <div className="px-3 py-1.5 text-slate-500 border-t border-slate-100">
+                    + {bulk.preview.length - 100} more (showing first 100)
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 

@@ -7,6 +7,7 @@ import {
   previewCleanup,
   saveCleanupConfig,
   searchResourcesForPicker,
+  type ApplyResult,
   type CleanupPreview,
 } from "./actions";
 import { revertLastBulkRun } from "./revert-actions";
@@ -31,6 +32,7 @@ export function CleanupForm({
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [preview, setPreview] = useState<CleanupPreview | null>(null);
+  const [bulk, setBulk] = useState<ApplyResult | null>(null);
   const [pickerOpen, setPickerOpen] = useState<null | "preview" | "apply">(
     null,
   );
@@ -78,9 +80,19 @@ export function CleanupForm({
     )
       return;
     setMsg(null);
+    setBulk(null);
     start(async () => {
       const r = await applyCleanupToAll(scope);
       setMsg((r.ok ? "✅ " : "❌ ") + r.message);
+    });
+  }
+
+  function dryRunAll() {
+    setMsg(null);
+    setBulk(null);
+    start(async () => {
+      const r = await applyCleanupToAll(scope, true);
+      setBulk(r);
     });
   }
 
@@ -303,6 +315,14 @@ export function CleanupForm({
         </button>
         <button
           type="button"
+          onClick={dryRunAll}
+          disabled={pending}
+          className="px-4 py-1.5 rounded bg-white border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-60"
+        >
+          Preview all
+        </button>
+        <button
+          type="button"
           onClick={applyAll}
           disabled={pending}
           className="px-4 py-1.5 rounded bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-sm font-semibold hover:opacity-95 disabled:opacity-60"
@@ -320,6 +340,47 @@ export function CleanupForm({
         </button>
         {msg && <span className="text-xs text-slate-600 ml-2">{msg}</span>}
       </div>
+
+      {bulk && (
+        <div className="bg-white border border-slate-200 rounded-lg p-4 text-xs">
+          <div className={bulk.ok ? "text-emerald-700" : "text-amber-700"}>
+            {bulk.message}
+          </div>
+          {bulk.preview && bulk.preview.length > 0 && (
+            <div className="mt-3 max-h-96 overflow-y-auto border border-slate-200 rounded">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="text-left px-3 py-1.5">Resource</th>
+                    <th className="text-right px-3 py-1.5 w-20">Changes</th>
+                    <th className="text-left px-3 py-1.5">Sample</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulk.preview.slice(0, 100).map((p) => (
+                    <tr key={p.resourceId} className="border-t border-slate-100">
+                      <td className="px-3 py-1 text-slate-700 truncate max-w-xs">
+                        {p.title || p.handle || p.resourceId}
+                      </td>
+                      <td className="px-3 py-1 text-right tabular-nums text-slate-600">
+                        {p.changeCount}
+                      </td>
+                      <td className="px-3 py-1 text-slate-500 truncate max-w-md">
+                        {p.changeSummary.join("; ")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bulk.preview.length > 100 && (
+                <div className="px-3 py-1.5 text-slate-500 border-t border-slate-100">
+                  + {bulk.preview.length - 100} more (showing first 100)
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {pickerOpen && (
         <Picker

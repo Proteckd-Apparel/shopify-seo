@@ -251,12 +251,19 @@ export type BulkResult = {
   processed: number;
   saved: number;
   failed: number;
+  preview?: Array<{
+    resourceId: string;
+    handle: string | null;
+    oldTitle: string | null;
+    newTitle: string;
+  }>;
 };
 
 export async function bulkApplyTitles(
   scope: TemplateScopeKey,
   template: TemplateConfig,
   cfg: TitleOptimizerConfig,
+  dryRun = false,
 ): Promise<BulkResult> {
   if (!cfg.enabled)
     return {
@@ -290,6 +297,7 @@ export async function bulkApplyTitles(
   let processed = 0;
   let saved = 0;
   let failed = 0;
+  const preview: NonNullable<BulkResult["preview"]> = [];
 
   for (const r of items) {
     processed++;
@@ -302,9 +310,24 @@ export async function bulkApplyTitles(
         : r.title ?? "";
       let next = cleanupTitle(rendered, cfg);
       if (cfg.aiRewrite) {
-        next = await aiRewriteTitle(next, r.title ?? "", cfg.aiInstructions);
+        // AI rewrite is expensive AND non-deterministic, so it stays
+        // skipped in dry-run; the preview shows the rule-based result
+        // and a note that AI would rerun on apply.
+        if (!dryRun) {
+          next = await aiRewriteTitle(next, r.title ?? "", cfg.aiInstructions);
+        }
       }
       if (!next || next === r.title) continue;
+      if (dryRun) {
+        preview.push({
+          resourceId: r.id,
+          handle: r.handle,
+          oldTitle: r.title,
+          newTitle: cfg.aiRewrite ? `${next} (AI will rerun on apply)` : next,
+        });
+        saved++;
+        continue;
+      }
       await updateResourceTitle(
         r.id,
         r.type,
@@ -318,17 +341,20 @@ export async function bulkApplyTitles(
     }
   }
 
-  revalidatePath("/optimize/titles");
+  if (!dryRun) revalidatePath("/optimize/titles");
   return {
     ok: failed === 0,
-    message: `Processed ${processed} (saved ${saved}, failed ${failed})${
-      cfg.aiRewrite && items.length === 100
-        ? " — AI cap reached, run again for more"
-        : ""
-    }`,
+    message: dryRun
+      ? `Preview: ${saved} would update, ${failed} would fail (out of ${processed}).`
+      : `Processed ${processed} (saved ${saved}, failed ${failed})${
+          cfg.aiRewrite && items.length === 100
+            ? " — AI cap reached, run again for more"
+            : ""
+        }`,
     processed,
     saved,
     failed,
+    ...(dryRun ? { preview } : {}),
   };
 }
 
