@@ -143,14 +143,16 @@ export async function compressOneFile(
     return {
       fileId,
       ok: true,
-      message: result.oldDeleted
-        ? "compressed + old deleted"
-        : `compressed (old kept: ${result.oldDeleteError ?? "in use"})`,
+      // Old file is intentionally not deleted — embedded URL references
+      // (article body HTML, theme JSON, metafields) would 404. User can
+      // manually clean up unreferenced originals from the Shopify Files
+      // admin once they've confirmed nothing points at them.
+      message: "compressed (old kept — manual cleanup)",
       before,
       after: out.length,
       saved: before - out.length,
       newUrl: result.newUrl,
-      oldDeleted: result.oldDeleted,
+      oldDeleted: false,
     };
   } catch (e) {
     return {

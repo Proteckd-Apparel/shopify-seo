@@ -155,17 +155,14 @@ export async function listImageFiles(max = 250): Promise<ImageFileRow[]> {
 //   1. stageBytes → POST new bytes to Shopify's temp bucket
 //   2. fileCreate — Shopify mints a new File id + CDN url
 //   3. pollFileReady until Shopify finishes processing
-//   4. fileDelete the old File — fails if it is referenced somewhere, in
-//      which case we leave both copies in place and surface the error.
-
-const FILE_DELETE = /* GraphQL */ `
-  mutation FileDelete($fileIds: [ID!]!) {
-    fileDelete(fileIds: $fileIds) {
-      deletedFileIds
-      userErrors { field message }
-    }
-  }
-`;
+//
+// We deliberately DO NOT call fileDelete on the old file. Shopify's
+// fileDelete only refuses for managed references (product media, article
+// featured image). It does NOT scan for URL references embedded in
+// article body HTML, theme Liquid/settings JSON, metafields, pages, or
+// email templates — all of which routinely hardcode CDN URLs. Deleting
+// here would silently 404 those references with no recovery path (this
+// tool has no imageBackup row to restore from).
 
 const FILE_CREATE_STANDALONE = /* GraphQL */ `
   mutation FileCreateStandalone($files: [FileCreateInput!]!) {
@@ -231,30 +228,11 @@ export async function replaceStandaloneFile(args: {
 
   const ready = await pollFileReady(newFile.id);
 
-  let oldDeleted = false;
-  let oldDeleteError: string | undefined;
-  try {
-    const delData = await shopifyGraphQL<{
-      fileDelete: {
-        deletedFileIds: string[] | null;
-        userErrors: Array<{ field?: string[] | null; message: string }>;
-      };
-    }>(FILE_DELETE, { fileIds: [args.oldFileId] });
-    if (delData.fileDelete.userErrors?.length) {
-      oldDeleteError = delData.fileDelete.userErrors
-        .map((e) => e.message)
-        .join("; ");
-    } else if ((delData.fileDelete.deletedFileIds ?? []).length > 0) {
-      oldDeleted = true;
-    }
-  } catch (e) {
-    oldDeleteError = e instanceof Error ? e.message : "Delete failed";
-  }
-
+  // Old file deletion intentionally disabled — see header comment above.
   return {
     newFileId: newFile.id,
     newUrl: ready.url,
-    oldDeleted,
-    oldDeleteError,
+    oldDeleted: false,
+    oldDeleteError: "delete-disabled (URL references in article HTML/theme/metafields would 404)",
   };
 }
