@@ -375,6 +375,13 @@ export const NAV: NavSection[] = [
         icon: ImageOff,
       },
       {
+        slug: "restore-backups",
+        title: "Restore Image Backups",
+        description:
+          "Roll back any compress / upscale / rename to the original bytes (90-day retention).",
+        icon: ImageIcon,
+      },
+      {
         slug: "image-editor",
         title: "Image Editor (Files)",
         description: "Edit images stored in Shopify Files.",
