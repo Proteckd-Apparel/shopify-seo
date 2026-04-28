@@ -151,6 +151,29 @@ export function SettingsForm({ initial }: { initial: OptimizerConfig }) {
         />
       </div>
 
+      {/* Daily cleanup cron toggle. proteckd-cron pings /api/cron/cleanup
+          at 03:00 UTC daily; that route reads this flag and no-ops when OFF.
+          Default ON — turn off only if you're debugging stale-row state and
+          want pruning paused. */}
+      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <div className="font-semibold text-slate-900 text-sm">
+            Daily cleanup cron
+          </div>
+          <div className="text-xs text-slate-600 mt-1">
+            ON = nightly 03:00 UTC sweep prunes stale image backups, old 404
+            logs, finished job runs, and expired broken-link captures, and
+            sweeps abandoned running jobs to failed. Safe + idempotent.
+            Turn OFF only if you want to freeze that state (e.g. while
+            debugging).
+          </div>
+        </div>
+        <Toggle
+          checked={cfg.cleanupCronEnabled}
+          onChange={(v) => setCfg((c) => ({ ...c, cleanupCronEnabled: v }))}
+        />
+      </div>
+
       {/* Master overwrite toggle. Reflects whether ANY per-field
           overwrite flag is on across all four resource types — so a
           single ON light tells you auto-runs may rewrite curated copy.

@@ -133,6 +133,11 @@ export const DEFAULT_COMPRESS_PHOTOS_CONFIG: CompressPhotosConfig = {
 export type OptimizerConfig = {
   // Global
   masterAutoOptimize: boolean;
+  // Daily cleanup cron toggle. ON = /api/cron/cleanup runs the prune sweep
+  // when proteckd-cron pings at 03:00 UTC. OFF = endpoint returns
+  // immediately with `skipped: "disabled in settings"` so no rows get
+  // pruned and nothing else changes (cron worker still pings, harmless).
+  cleanupCronEnabled: boolean;
   notes: string; // free-form AI brand voice / rules
   // Per resource type
   products: ResourceConfig;
@@ -209,6 +214,7 @@ const DEFAULT_RESOURCE_CONFIG: ResourceConfig = {
 
 export const DEFAULT_OPTIMIZER_CONFIG: OptimizerConfig = {
   masterAutoOptimize: false,
+  cleanupCronEnabled: true,
   notes: "",
   products: { ...DEFAULT_RESOURCE_CONFIG },
   collections: { ...DEFAULT_RESOURCE_CONFIG, htmlText: false },
