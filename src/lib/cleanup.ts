@@ -100,6 +100,10 @@ export type CleanupReport = {
   durationMs: number;
 };
 
+// Self-prune CleanupRun history so this table doesn't grow unbounded.
+// 30 days is plenty to debug "did the cron stop firing 2 weeks ago?".
+const CLEANUP_RUN_TTL_DAYS = Number(process.env.CLEANUP_RUN_TTL_DAYS || 30);
+
 export async function runAllCleanups(): Promise<CleanupReport> {
   const start = Date.now();
   const [imageBackups, scanRuns, notFound, brokenLinks, jobRuns, staleJobsFailed] =
@@ -111,7 +115,7 @@ export async function runAllCleanups(): Promise<CleanupReport> {
       pruneOldJobRuns(),
       failStaleRunningJobs(),
     ]);
-  return {
+  const report: CleanupReport = {
     imageBackups,
     scanRuns,
     notFoundResolved: notFound.resolved,
@@ -121,4 +125,25 @@ export async function runAllCleanups(): Promise<CleanupReport> {
     staleJobsFailed,
     durationMs: Date.now() - start,
   };
+
+  const cleanupCutoff = new Date(
+    Date.now() - CLEANUP_RUN_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+  await Promise.all([
+    prisma.cleanupRun.create({
+      data: {
+        durationMs: report.durationMs,
+        imageBackups: report.imageBackups,
+        scanRuns: report.scanRuns,
+        notFoundResolved: report.notFoundResolved,
+        notFoundStale: report.notFoundStale,
+        brokenLinks: report.brokenLinks,
+        jobRuns: report.jobRuns,
+        staleJobsFailed: report.staleJobsFailed,
+      },
+    }),
+    prisma.cleanupRun.deleteMany({ where: { ranAt: { lt: cleanupCutoff } } }),
+  ]);
+
+  return report;
 }

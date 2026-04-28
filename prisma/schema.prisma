@@ -290,3 +290,22 @@ model JobRun {
 
   @@index([status, finishedAt])
 }
+
+// One row per /api/cron/cleanup invocation. Lets the admin dashboard show
+// "last cleanup ran X ago, pruned N rows" instead of guessing from cron config.
+// Self-pruning: rows older than CLEANUP_RUN_TTL_DAYS get dropped on the next
+// run (cleanup keeps its own recent history bounded).
+model CleanupRun {
+  id                  String   @id @default(cuid())
+  ranAt               DateTime @default(now())
+  durationMs          Int
+  imageBackups        Int
+  scanRuns            Int
+  notFoundResolved    Int
+  notFoundStale       Int
+  brokenLinks         Int
+  jobRuns             Int
+  staleJobsFailed     Int
+
+  @@index([ranAt])
+}
