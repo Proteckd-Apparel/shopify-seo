@@ -8,7 +8,6 @@
 // If no secret is configured the route refuses to run.
 
 import { runAllCleanups } from "@/lib/cleanup";
-import { loadOptimizerConfig } from "@/lib/optimizer-config";
 
 export const dynamic = "force-dynamic";
 
@@ -23,13 +22,6 @@ export async function POST(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
   if (auth !== `Bearer ${secret}`) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  }
-
-  // User-controlled kill switch. Cron worker will still ping us at 03:00 UTC
-  // (it's centralized + dumb), but we no-op here when the toggle is off.
-  const cfg = await loadOptimizerConfig();
-  if (!cfg.cleanupCronEnabled) {
-    return Response.json({ ok: true, skipped: "disabled in settings" });
   }
 
   try {
