@@ -3,6 +3,10 @@
 // auth only kicks in inside the iframe — direct hostname hits had no
 // gate before this. Public endpoints (cron, storefront pixel, sitemaps)
 // are excluded via the matcher below.
+//
+// Next 16 renamed the `middleware.ts` file convention to `proxy.ts`
+// (export name also `proxy`). Older Next versions still accept
+// `middleware.ts` with a deprecation warning.
 
 import { NextRequest, NextResponse } from "next/server";
 
@@ -19,7 +23,7 @@ export const config = {
   ],
 };
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) {
     // No password = open access (dev only). Set ADMIN_PASSWORD on Railway.
